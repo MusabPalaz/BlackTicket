@@ -30,6 +30,16 @@ Requires ffmpeg. The script rewrites `packages/web/public/brand/` from scratch:
 21.6 MB in total → 844 KB. The only large file the sign-in screen downloads on
 first load is the ~240 KB webm.
 
+## Repository images
+
+`.github/assets/banner.png` (1280×520, the README header) and
+`.github/assets/social-preview.png` (1280×640, for GitHub's *Settings → Social
+preview*) are cut from `logo-full.master.png`. The artwork is a dotted texture, so
+shrinking it averages the dots with the black between them and it turns grey;
+the brightness is lifted **after** downscaling, against the small image's own
+95th percentile, with a slight midtone lift. Black stays black, so the images
+read as a dark tile on both light and dark GitHub themes.
+
 ## If you change a master
 
 `build-assets.sh` depends on two constants tied to the composition, which a new

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/assets/banner.png" alt="Black Ticket" width="720">
+</p>
+
 # Black Ticket
 
 A SOC ticket, case and IOC correlation platform. Analysts record the incidents
