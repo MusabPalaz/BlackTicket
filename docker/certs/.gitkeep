@@ -1,0 +1,7 @@
+Place the certificate for PUBLIC_HOST here, issued by the organisation's own CA:
+
+  server.crt   the certificate, with any intermediates appended
+  server.key   its private key
+
+There is no public DNS name for an internal host, so no public CA can issue one
+and Caddy is configured not to try.

@@ -1,0 +1,83 @@
+# Build context is the repository root, not this directory:
+#   docker build -f docker/Dockerfile.api .
+#
+# Debian slim rather than Alpine on purpose. `@node-rs/argon2` is a native Rust
+# module and Prisma ships platform-specific engines; both have musl builds, but
+# a password hash that silently fails to load is not the kind of surprise worth
+# saving forty megabytes for.
+
+# ---------------------------------------------------------------- dependencies
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+
+# Manifests first so a source change does not invalidate the install layer.
+# The root package.json also carries the `allowScripts` map npm 11 needs before
+# it will run Prisma's and esbuild's install scripts — without it the engines
+# never download and the build fails much later, confusingly.
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/api/package.json packages/api/
+COPY packages/web/package.json packages/web/
+RUN npm ci
+
+# --------------------------------------------------------------------- build
+FROM deps AS build
+WORKDIR /app
+COPY tsconfig.base.json ./
+COPY packages/shared packages/shared
+COPY packages/api packages/api
+
+# shared is a real dependency of api, so it has to be compiled first.
+RUN npm run build -w @black-ticket/shared \
+ && npx prisma generate --schema packages/api/prisma/schema.prisma \
+ && npm run build -w @black-ticket/api \
+ && npm run build:seed -w @black-ticket/api
+
+# The seed is bundled rather than transpiled: it imports from src/ and prisma/,
+# neither of which reaches the runtime image, and it has to run with plain
+# `node` because tsx is a dev dependency and is pruned away below.
+
+# Drop everything the runtime does not need. Prisma's CLI is deliberately kept:
+# the same image runs the migration step.
+RUN npm prune --omit=dev
+
+# ------------------------------------------------------------------- runtime
+FROM node:22-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+# bookworm-slim ships no OpenSSL. Without it Prisma cannot detect which libssl
+# to use, warns on every command and falls back to guessing openssl-1.1.x for
+# its query engine — the exact class of silent native-module failure this image
+# picked Debian to avoid.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Never as root. The image writes nothing outside /tmp; the database holds state.
+RUN groupadd --system --gid 1001 blackticket \
+ && useradd --system --uid 1001 --gid blackticket blackticket
+
+COPY --from=build --chown=blackticket:blackticket /app/node_modules node_modules
+COPY --from=build --chown=blackticket:blackticket /app/package.json package.json
+COPY --from=build --chown=blackticket:blackticket /app/packages/shared/dist packages/shared/dist
+COPY --from=build --chown=blackticket:blackticket /app/packages/shared/package.json packages/shared/package.json
+COPY --from=build --chown=blackticket:blackticket /app/packages/api/dist packages/api/dist
+COPY --from=build --chown=blackticket:blackticket /app/packages/api/package.json packages/api/package.json
+# Schema and migrations travel with the image: the migration step and the image
+# it runs beside can then never disagree about which migrations exist.
+COPY --from=build --chown=blackticket:blackticket /app/packages/api/prisma packages/api/prisma
+# Prisma 7 removed `url` from the schema's datasource block, so this file is the
+# only place the CLI can learn the connection string. Without it `migrate deploy`
+# stops with "datasource.url property is required" and the API never starts.
+# It reads DATABASE_URL from the environment; the dotenv call inside it looks for
+# a repository .env that does not exist here and harmlessly finds nothing.
+COPY --from=build --chown=blackticket:blackticket /app/packages/api/prisma.config.ts packages/api/prisma.config.ts
+
+USER blackticket
+WORKDIR /app/packages/api
+EXPOSE 3000
+
+# No shell form: the process must be PID 1 so `docker stop` reaches Node and
+# Nest can close its database pool instead of being killed after the timeout.
+CMD ["node", "dist/main.js"]

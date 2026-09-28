@@ -1,0 +1,151 @@
+# Black Ticket — single-server deployment.
+#
+#   docker compose pull
+#   docker compose up -d
+#
+# Read docker/README.md before the first run: the encryption key in .env is not
+# recoverable, and losing it costs every account's two-factor, single sign-on
+# and outbound mail.
+
+name: blackticket
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-blackticket}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-blackticket}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # Not `pg_isready` alone: that answers before the database is accepting
+      # queries on first boot, and the migration step would then fail once and
+      # leave the stack half-started.
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-blackticket} -d ${POSTGRES_DB:-blackticket} -q']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    # Never published to the host. Only the other containers reach it.
+    expose:
+      - '5432'
+
+  # The reason an update cannot corrupt the database.
+  #
+  # This runs `prisma migrate deploy` once and exits. The API will not start
+  # until it has exited successfully, so the schema is always at least as new as
+  # the code that talks to it. `migrate deploy` only ever applies pending
+  # migrations in order — it never resets, and it is the only Prisma command
+  # this deployment runs.
+  migrate:
+    image: ${IMAGE_API:?IMAGE_API is required, see .env.example}:${TAG:-latest}
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blackticket}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackticket}
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+
+  api:
+    image: ${IMAGE_API:?IMAGE_API is required, see .env.example}:${TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      API_PORT: '3000'
+      API_PREFIX: /api/v1
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blackticket}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackticket}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-50}
+      # One origin, so this is the same host the browser is on.
+      CORS_ORIGINS: https://${PUBLIC_HOST}
+      WEB_BASE_URL: https://${PUBLIC_HOST}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required}
+      RATE_LIMIT_GLOBAL_PER_MIN: ${RATE_LIMIT_GLOBAL_PER_MIN:-300}
+      RATE_LIMIT_LOGIN_PER_MIN: ${RATE_LIMIT_LOGIN_PER_MIN:-10}
+      RATE_LIMIT_INGEST_PER_MIN: ${RATE_LIMIT_INGEST_PER_MIN:-100}
+      RATE_LIMIT_SCIM_PER_MIN: ${RATE_LIMIT_SCIM_PER_MIN:-600}
+    expose:
+      - '3000'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    image: ${IMAGE_WEB:?IMAGE_WEB is required, see .env.example}:${TAG:-latest}
+    restart: unless-stopped
+    expose:
+      - '80'
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?PUBLIC_HOST is required, e.g. ticketing.example.local}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The organisation's own certificate for PUBLIC_HOST. There is no public
+      # DNS name here, so no public CA can issue one.
+      - ./certs:/etc/caddy/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # Not started with the stack. Run it on demand or from a scheduled job:
+  #
+  #   docker compose run --rm backup
+  #
+  # Deliberately not a container with its own cron: a backup that fails quietly
+  # inside a sidecar nobody watches is worse than one the host scheduler reports
+  # on. See docker/README.md for the systemd timer.
+  backup:
+    image: postgres:16-alpine
+    profiles: ['tools']
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${BACKUP_DIR:-./backups}:/backups
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        stamp=$$(date +%Y%m%d-%H%M%S)
+        out="/backups/blackticket-$$stamp.dump"
+        pg_dump -h db -U ${POSTGRES_USER:-blackticket} -d ${POSTGRES_DB:-blackticket} \
+          --format=custom --compress=6 --file="$$out"
+        pg_restore --list "$$out" > /dev/null
+        echo "wrote $$out"
+        # The dump is only half a backup. The encryption key lives in .env and
+        # is not in here; without it the restored database has no working
+        # two-factor, single sign-on or outbound mail.
+        echo "REMINDER: TOTP_ENCRYPTION_KEY is NOT in this dump. Store it separately."
+        find /backups -name 'blackticket-*.dump' -mtime +${BACKUP_KEEP_DAYS:-30} -delete
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

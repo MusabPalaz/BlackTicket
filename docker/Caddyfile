@@ -1,0 +1,47 @@
+# One origin for the whole application.
+#
+# The browser only ever talks to https://{$PUBLIC_HOST}. The front end asks for
+# /api/v1/... as a relative path, this routes it to the API, and CORS never
+# comes into it — which is why CORS_ORIGINS is set to this same host and
+# nothing else.
+
+{
+	# No public DNS here, so Caddy must not try to obtain a certificate from a
+	# public CA. The certificate comes from the organisation's own CA.
+	auto_https off
+	admin off
+}
+
+https://{$PUBLIC_HOST}:443 {
+	tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key
+
+	encode zstd gzip
+
+	# Set once, at the edge, for everything the browser receives — including the
+	# static files nginx serves, which deliberately do not set them themselves.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		# Embedding in another page is refused. The application is meant to be
+		# opened as a link from the operations dashboard, not framed inside it.
+		# Framing it would need this and the API's own CSP relaxed together.
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	# The API is matched first: /api/v1 is a path on the same origin, not a
+	# separate host, so the SPA fallback below must never see it.
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+# Anyone arriving on http is sent to https rather than quietly served in clear.
+http://{$PUBLIC_HOST}:80 {
+	redir https://{$PUBLIC_HOST}{uri} permanent
+}

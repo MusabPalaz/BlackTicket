@@ -1,0 +1,45 @@
+{
+  "name": "black-ticket",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Black Ticket — SOC ticket, case and IOC correlation platform",
+  "workspaces": [
+    "packages/shared",
+    "packages/api",
+    "packages/web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @black-ticket/api",
+    "dev:web": "npm run dev -w @black-ticket/web",
+    "build": "npm run build -w @black-ticket/shared && npm run build -w @black-ticket/api && npm run build -w @black-ticket/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "npm run db:migrate -w @black-ticket/api",
+    "db:seed": "npm run db:seed -w @black-ticket/api",
+    "db:studio": "npm run db:studio -w @black-ticket/api",
+    "db:reset": "npm run db:reset -w @black-ticket/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.1",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8.67.0"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.9.1": true,
+    "prisma@7.9.1": true,
+    "esbuild@0.28.2": true,
+    "@scarf/scarf": false
+  }
+}

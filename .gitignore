@@ -1,0 +1,39 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local database dumps / backups
+backups/
+*.dump
+*.sql.gz
+
+# TLS material for the Docker deployment. The private key must never be committed.
+docker/certs/*
+!docker/certs/.gitkeep
+
+# Offline image exports (docker save) and customer bundles
+*.tar
+*.zip
+
+# Local tool state
+.claude/

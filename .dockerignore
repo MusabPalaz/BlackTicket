@@ -1,0 +1,13 @@
+# Anything the build should never see, and anything that would bust the cache.
+node_modules
+**/node_modules
+**/dist
+.git
+.env
+**/.env
+backups
+docs
+*.md
+!README.md
+packages/api/scripts/load
+design

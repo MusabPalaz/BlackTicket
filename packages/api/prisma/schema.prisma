@@ -1,0 +1,808 @@
+// Black Ticket — database schema
+//
+// Conventions
+//   * All primary keys are UUIDs; `Case.number` is the human-facing sequence.
+//   * Nothing is hard-deleted that has audit value — `deletedAt` marks removal.
+//   * `username` / `email` are stored lower-cased by the service layer so the
+//     plain unique index behaves case-insensitively without needing citext.
+//   * AuditLog is append-only; a migration adds a rule that rejects UPDATE and
+//     DELETE at the database level.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgTrgm(map: "pg_trgm")]
+}
+
+// ---------------------------------------------------------------------------
+// Enums (mirror packages/shared/src/enums.ts — keep both sides in sync)
+// ---------------------------------------------------------------------------
+
+/// How an account authenticates. Mirrors the shared IdentityProvider union.
+enum IdentityProvider {
+  LOCAL
+  OIDC
+}
+
+enum Role {
+  ADMIN
+  SOC_LEAD
+  ANALYST
+  READ_ONLY
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  LOCKED
+  PENDING_ACTIVATION
+}
+
+enum CaseStatus {
+  NEW
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum CaseResolution {
+  TRUE_POSITIVE
+  FALSE_POSITIVE
+  BENIGN
+  DUPLICATE
+  INDETERMINATE
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Tlp {
+  WHITE
+  GREEN
+  AMBER
+  RED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ObservableType {
+  IP
+  DOMAIN
+  URL
+  HASH_MD5
+  HASH_SHA1
+  HASH_SHA256
+  EMAIL
+  USERNAME
+  HOSTNAME
+  FILENAME
+  REGISTRY_KEY
+  MUTEX
+  USER_AGENT
+  OTHER
+}
+
+enum CaseLinkType {
+  CORRELATED
+  DUPLICATE
+  RELATED
+  PARENT
+  CHILD
+}
+
+enum AlertStatus {
+  NEW
+  TRIAGED
+  IMPORTED
+  IGNORED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id                 String     @id @default(uuid()) @db.Uuid
+  username           String     @unique
+  email              String     @unique
+  fullName           String
+  /// Null for an account provisioned by an identity provider: it has no local
+  /// password at all. Kept honest rather than filled with an unusable hash,
+  /// so every call site is forced to decide what "no local credential" means.
+  passwordHash       String?
+  role               Role       @default(ANALYST)
+  status             UserStatus @default(PENDING_ACTIVATION)
+  mustChangePassword Boolean    @default(true)
+
+  totpSecret       String?
+  totpEnabled      Boolean  @default(false)
+  totpRecoveryHash String[] @default([])
+
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+
+  createdById  String? @db.Uuid
+  createdBy    User?   @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers User[]  @relation("UserCreatedBy")
+
+  /// Where the account came from. LOCAL accounts are administered here; OIDC
+  /// accounts are owned by the directory and refreshed on every sign-in.
+  identityProvider IdentityProvider @default(LOCAL)
+  /// Stable subject id at the provider — Entra's object id. Never the e-mail:
+  /// people get renamed, and an address that moves must not move an account.
+  externalId       String?
+  /// Issuer the subject belongs to, so two directories cannot collide.
+  externalIssuer   String?
+  provisionedAt    DateTime?
+  /// The directory's own id for this person, as sent over SCIM. Kept apart
+  /// from externalId: an OIDC subject and a SCIM externalId are different
+  /// identifiers for the same human, and Entra issues both.
+  scimExternalId   String?
+
+  /// The break-glass administrator. Cannot be deleted, disabled or moved off
+  /// ADMIN by anyone, so a mistake elsewhere can never leave the system with
+  /// no usable way back in. Deliberately not settable through the API: moving
+  /// it is a decision made against the database, not from a screen.
+  isRecoveryAccount Boolean @default(false)
+
+  /// Free-text labels for grouping accounts — shift, tier, team, location.
+  /// Free text for the same reason case tags are: an administrator must never
+  /// be unable to describe a group because the vocabulary is missing a word.
+  tags String[] @default([])
+
+  /// Per-user UI state, currently the dashboard layout. Kept as JSON because
+  /// it is read and written whole and never queried by its contents.
+  preferences Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  refreshTokens    RefreshToken[]
+  ssoLoginAttempts SsoLoginAttempt[]
+  outboundEmails   OutboundEmail[]
+  passwordHistory  PasswordHistory[]
+  reportedCases    Case[]            @relation("CaseReporter")
+  assignedCases    Case[]            @relation("CaseAssignee")
+  assignedTasks    CaseTask[]        @relation("TaskAssignee")
+  createdTasks     CaseTask[]        @relation("TaskCreator")
+  taskLogs         TaskLog[]
+  addedObservables CaseObservable[]
+  createdLinks     CaseLink[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  apiKeys          ApiKey[]
+  caseMitre        CaseMitre[]
+  createdTemplates TaskTemplate[]
+
+  @@unique([externalIssuer, externalId])
+  @@index([scimExternalId])
+  @@index([role, status])
+  @@index([status])
+  @@index([tags], type: Gin)
+  @@map("user")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the token; the raw value never touches the database.
+  tokenHash String    @unique
+  /// Rotation chain — lets us detect replay of an already-rotated token.
+  familyId  String    @db.Uuid
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@map("refresh_token")
+}
+
+model PasswordHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("password_history")
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy & configuration (managed from the admin console)
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  color     String   @default("#64748b")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cases  Case[]
+  alerts Alert[]
+
+  @@map("category")
+}
+
+model SlaPolicy {
+  id                   String   @id @default(uuid()) @db.Uuid
+  severity             Severity @unique
+  /// Minutes allowed before the first analyst response.
+  firstResponseMinutes Int
+  /// Minutes allowed before the case must be resolved.
+  resolutionMinutes    Int
+  isActive             Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
+
+  @@map("sla_policy")
+}
+
+/// Indicators that must never produce automatic correlations — internal ranges
+/// and high-noise infrastructure. Managed from Admin → Correlation Whitelist.
+model CorrelationWhitelist {
+  id        String         @id @default(uuid()) @db.Uuid
+  type      ObservableType
+  /// Exact normalized value, or a CIDR when `isCidr` is set (IP type only).
+  pattern   String
+  isCidr    Boolean        @default(false)
+  reason    String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([type, pattern])
+  @@map("correlation_whitelist")
+}
+
+/// Suggested tags offered when opening a case.
+///
+/// Case tags stay a free-text array — an analyst must never be blocked by a
+/// missing entry — but the catalogue is what the picker offers, and every new
+/// tag typed by hand is registered here so the vocabulary converges instead of
+/// fragmenting into "phish", "phishing" and "Phishing".
+model Tag {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  color       String   @default("#64748b")
+  /// Seeded vocabulary versus tags that appeared through use.
+  isSuggested Boolean  @default(false)
+  usageCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isSuggested, usageCount(sort: Desc)])
+  @@map("tag")
+}
+
+/// A checklist of investigation steps attached to a case automatically.
+///
+/// Which playbook applies is decided by the case's tags and category, so an
+/// analyst opening a phishing case is asked phishing questions and one working
+/// an EDR detection is asked about the affected host and user.
+model TaskTemplate {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @unique
+  description     String   @default("")
+  /// Applied to every case regardless of tags.
+  isDefault       Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  /// Any overlap with the case's tags triggers this playbook.
+  matchTags       String[] @default([])
+  /// Any match against the case's category slug triggers this playbook.
+  matchCategories String[] @default([])
+  sortOrder       Int      @default(100)
+
+  createdById String? @db.Uuid
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items TaskTemplateItem[]
+
+  @@index([isActive, sortOrder])
+  @@map("task_template")
+}
+
+model TaskTemplateItem {
+  id         String       @id @default(uuid()) @db.Uuid
+  templateId String       @db.Uuid
+  template   TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  title      String
+  /// The question the analyst answers in the task's work log.
+  prompt     String       @default("")
+  sortOrder  Int          @default(0)
+
+  @@index([templateId, sortOrder])
+  @@map("task_template_item")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("system_setting")
+}
+
+// ---------------------------------------------------------------------------
+// Cases
+// ---------------------------------------------------------------------------
+
+model Case {
+  id     String @id @default(uuid()) @db.Uuid
+  /// Human-facing sequence, rendered as BT-<year>-<padded number>.
+  number Int    @unique @default(autoincrement())
+
+  title       String
+  description String @default("")
+
+  status     CaseStatus      @default(NEW)
+  resolution CaseResolution?
+  severity   Severity        @default(MEDIUM)
+  tlp        Tlp             @default(AMBER)
+  pap        Tlp             @default(AMBER)
+
+  categoryId String?   @db.Uuid
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  reporterId String @db.Uuid
+  reporter   User   @relation("CaseReporter", fields: [reporterId], references: [id])
+
+  assigneeId String? @db.Uuid
+  assignee   User?   @relation("CaseAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  /// Where the case came from: "manual", "Wazuh", "CrowdStrike"…
+  sourceSystem String  @default("manual")
+  /// Identifier of the originating alert in that system, when applicable.
+  sourceRef    String?
+
+  occurredAt      DateTime  @default(now())
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+
+  slaDueAt              DateTime?
+  slaFirstResponseDueAt DateTime?
+  slaBreached           Boolean   @default(false)
+
+  /// Closing summary — required when a case moves to CLOSED.
+  summary String?
+  tags    String[] @default([])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tasks         CaseTask[]
+  observables   CaseObservable[]
+  mitre         CaseMitre[]
+  outgoingLinks CaseLink[]       @relation("LinkSource")
+  incomingLinks CaseLink[]       @relation("LinkTarget")
+  alerts        Alert[]
+
+  @@index([status, severity, createdAt(sort: Desc)])
+  @@index([assigneeId, status])
+  @@index([reporterId])
+  @@index([categoryId])
+  @@index([slaDueAt])
+  @@index([tags], type: Gin)
+  @@map("case")
+}
+
+model CaseTask {
+  id     String @id @default(uuid()) @db.Uuid
+  caseId String @db.Uuid
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String     @default("")
+  status      TaskStatus @default(TODO)
+  sortOrder   Int        @default(0)
+
+  assigneeId String? @db.Uuid
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdById String @db.Uuid
+  createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id])
+
+  dueAt       DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  /// Set when the task came from a playbook; used to avoid adding the same
+  /// checklist twice and to show where a task came from.
+  templateItemId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs TaskLog[]
+
+  @@index([caseId, sortOrder])
+  @@index([assigneeId, status])
+  @@index([templateItemId])
+  @@map("case_task")
+}
+
+/// The analyst's working notes on a task — the investigation trail.
+model TaskLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @db.Uuid
+  task      CaseTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String   @db.Uuid
+  author    User     @relation(fields: [authorId], references: [id])
+  /// Markdown, sanitized on render.
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@map("task_log")
+}
+
+// ---------------------------------------------------------------------------
+// Observables & correlation
+// ---------------------------------------------------------------------------
+
+/// A globally unique indicator. Two cases referencing the same row is exactly
+/// what the correlation engine looks for.
+model Observable {
+  id              String         @id @default(uuid()) @db.Uuid
+  type            ObservableType
+  /// As entered by the analyst, preserved for display and forensics.
+  value           String
+  /// Canonical form used for matching (lower-cased, defanged, IPs compressed).
+  normalizedValue String
+
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  /// Denormalized count of cases referencing this observable.
+  sightingCount Int      @default(0)
+  /// Set once the sighting count crosses the fan-out limit; noisy indicators
+  /// stop generating automatic case links.
+  isNoisy       Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cases CaseObservable[]
+  links CaseLink[]
+
+  @@unique([type, normalizedValue])
+  @@index([sightingCount(sort: Desc)])
+  /// Indicator search is a substring match, which no btree can serve: without
+  /// this every search is a parallel sequential scan of the whole table. On an
+  /// installation that already holds millions of rows, build it with
+  /// scripts/maintenance/observable-trgm-index.sql before migrating — the
+  /// migration is written to find it and do nothing.
+  @@index([normalizedValue(ops: raw("gin_trgm_ops"))], type: Gin, map: "observable_normalizedvalue_trgm")
+  @@map("observable")
+}
+
+model CaseObservable {
+  id           String     @id @default(uuid()) @db.Uuid
+  caseId       String     @db.Uuid
+  case         Case       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  observableId String     @db.Uuid
+  observable   Observable @relation(fields: [observableId], references: [id], onDelete: Cascade)
+
+  /// Marked as an indicator of compromise rather than mere context.
+  isIoc       Boolean @default(false)
+  tlp         Tlp     @default(AMBER)
+  description String?
+
+  addedById String   @db.Uuid
+  addedBy   User     @relation(fields: [addedById], references: [id])
+  addedAt   DateTime @default(now())
+
+  @@unique([caseId, observableId])
+  @@index([observableId])
+  @@index([caseId])
+  @@map("case_observable")
+}
+
+model CaseLink {
+  id           String       @id @default(uuid()) @db.Uuid
+  sourceCaseId String       @db.Uuid
+  sourceCase   Case         @relation("LinkSource", fields: [sourceCaseId], references: [id], onDelete: Cascade)
+  targetCaseId String       @db.Uuid
+  targetCase   Case         @relation("LinkTarget", fields: [targetCaseId], references: [id], onDelete: Cascade)
+  linkType     CaseLinkType @default(RELATED)
+
+  /// Human-readable justification, e.g. "Shared IP 185.220.101.4".
+  reason String
+
+  /// The indicator that triggered an automatic correlation, when applicable.
+  observableId String?     @db.Uuid
+  observable   Observable? @relation(fields: [observableId], references: [id], onDelete: SetNull)
+
+  isAutomatic Boolean @default(false)
+  createdById String? @db.Uuid
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@unique([sourceCaseId, targetCaseId, observableId])
+  @@index([sourceCaseId])
+  @@index([targetCaseId])
+  @@map("case_link")
+}
+
+// ---------------------------------------------------------------------------
+// MITRE ATT&CK
+// ---------------------------------------------------------------------------
+
+model MitreTechnique {
+  /// e.g. "T1566.001"
+  id       String  @id
+  name     String
+  tactic   String
+  /// Parent technique for sub-techniques.
+  parentId String?
+  url      String
+  isActive Boolean @default(true)
+
+  cases CaseMitre[]
+
+  @@index([tactic])
+  @@map("mitre_technique")
+}
+
+model CaseMitre {
+  caseId      String         @db.Uuid
+  case        Case           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  techniqueId String
+  technique   MitreTechnique @relation(fields: [techniqueId], references: [id], onDelete: Cascade)
+  addedById   String         @db.Uuid
+  addedBy     User           @relation(fields: [addedById], references: [id])
+  addedAt     DateTime       @default(now())
+
+  @@id([caseId, techniqueId])
+  @@index([techniqueId])
+  @@map("case_mitre")
+}
+
+// ---------------------------------------------------------------------------
+// Alert ingestion
+// ---------------------------------------------------------------------------
+
+model Alert {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Identifier in the source system — with `source`, guarantees idempotency.
+  externalId String
+  source     String
+
+  title       String
+  description String   @default("")
+  severity    Severity @default(MEDIUM)
+
+  categoryId String?   @db.Uuid
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  /// Untouched payload from the SIEM, kept for forensics and re-processing.
+  rawPayload  Json
+  /// Parsed observables, materialized into real rows only on import.
+  observables Json     @default("[]")
+  mitre       String[] @default([])
+
+  status AlertStatus @default(NEW)
+
+  caseId String? @db.Uuid
+  case   Case?   @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  apiKeyId String? @db.Uuid
+  apiKey   ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  occurredAt DateTime @default(now())
+  receivedAt DateTime @default(now())
+
+  @@unique([source, externalId])
+  @@index([status, receivedAt(sort: Desc)])
+  @@index([source])
+  @@map("alert")
+}
+
+model ApiKey {
+  id      String   @id @default(uuid()) @db.Uuid
+  name    String
+  /// SHA-256 of the key. The plaintext is shown once, at creation.
+  keyHash String   @unique
+  /// Leading identifier segment, shown in the UI so keys are recognizable.
+  prefix  String
+  scopes  String[] @default(["ingest:write"])
+
+  createdById String @db.Uuid
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  alerts Alert[]
+
+  @@index([revokedAt])
+  @@map("api_key")
+}
+
+// ---------------------------------------------------------------------------
+// Audit, notifications, jobs
+// ---------------------------------------------------------------------------
+
+/// Append-only. A migration installs rules rejecting UPDATE and DELETE so the
+/// trail cannot be rewritten, including by the application itself.
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  actorId        String? @db.Uuid
+  actor          User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorIp        String?
+  actorUserAgent String?
+
+  action     String
+  entityType String
+  entityId   String?
+
+  before   Json?
+  after    Json?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+model Notification {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type   String
+  title  String
+  body   String  @default("")
+  /// In-app deep link, e.g. "/cases/<id>".
+  link   String?
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notification")
+}
+
+enum OutboundEmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+/// One message the application wants delivered, and what became of it.
+///
+/// This is the queue and the record at once. A SOC administrator has to be
+/// able to answer "did the breach notice actually reach them?", and a queue
+/// that forgets its own history cannot answer it. The rendered body is dropped
+/// once the message is away: keeping a second copy of case content here, for
+/// every notification, forever, is a liability with no reader.
+model OutboundEmail {
+  id String @id @default(uuid()) @db.Uuid
+
+  to     String
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  template String
+  subject  String
+  /// Rendered when queued, cleared on success. Null on a sent row is normal.
+  bodyText String?
+
+  status      OutboundEmailStatus @default(PENDING)
+  attempts    Int                 @default(0)
+  maxAttempts Int                 @default(5)
+  /// Next attempt. Backoff moves this forward rather than blocking a worker.
+  runAt       DateTime            @default(now())
+  lastError   String?
+  messageId   String?
+
+  lockedAt DateTime?
+  lockedBy String?
+  sentAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, runAt])
+  @@index([createdAt])
+  @@map("outbound_email")
+}
+
+/// One federated sign-in attempt, from the redirect out to the token handoff.
+///
+/// This table exists because the application keeps no cookies at all - CORS
+/// runs with credentials disabled and the client is pure bearer-token - so the
+/// PKCE verifier and the one-time handoff code need somewhere server-side to
+/// live between the two legs of the flow. Rows are short-lived and swept.
+model SsoLoginAttempt {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// SHA-256 of the state parameter. Hashed for the same reason refresh tokens
+  /// are: until it is consumed the row is a bearer credential.
+  stateHash    String @unique
+  codeVerifier String
+  nonce        String
+
+  /// Where to land afterwards, when the sign-in started from a deep link.
+  returnTo String?
+
+  /// Set only once the provider has been validated; before that the attempt
+  /// belongs to nobody.
+  userId      String? @db.Uuid
+  user        User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the one-time code the browser exchanges for a token pair.
+  handoffHash String? @unique
+
+  ip        String?
+  userAgent String?
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@map("sso_login_attempt")
+}
+
+/// Minimal PostgreSQL-backed job queue (claimed with FOR UPDATE SKIP LOCKED).
+/// Deliberately not Redis: one server, ~600 users, one less moving part.
+model Job {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String
+  payload     Json      @default("{}")
+  status      JobStatus @default(PENDING)
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  lastError   String?
+  lockedAt    DateTime?
+  lockedBy    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@map("job")
+}
