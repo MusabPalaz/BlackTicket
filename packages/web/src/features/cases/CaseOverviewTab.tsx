@@ -200,9 +200,7 @@ export function CaseOverviewTab({ record, canEdit, canAssignAnyone, people, onAs
             <Row label="Resolution due">{formatDateTime(record.slaDueAt)}</Row>
             <Row label="Opened">{formatDateTime(record.createdAt)}</Row>
             <Row label="Last change">{formatDateTime(record.updatedAt)}</Row>
-            <Row label="Observables">
-              {record.observableCount} <span className="text-xs">(Phase 3)</span>
-            </Row>
+            <Row label="Observables">{record.observableCount}</Row>
           </dl>
         </Card>
 
