@@ -12,11 +12,7 @@ the two cases are linked automatically.
 Design goal: **the useful core of TheHive, without the installation and usage
 overhead.**
 
-<p align="center">
-  <a href=".github/assets/blackticket-promo.mp4">
-    <img src=".github/assets/promo-poster.jpg" alt="Watch the 60-second tour of Black Ticket" width="720">
-  </a>
-</p>
+https://github.com/user-attachments/assets/cb5853b2-1b38-4f75-b2b6-90ff9110183b
 
 - Detailed technical plan: [PLAN.md](PLAN.md)
 - Interface design structure: [packages/web/DESIGN.md](packages/web/DESIGN.md)
