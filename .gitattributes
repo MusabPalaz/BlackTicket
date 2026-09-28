@@ -1,0 +1,10 @@
+# Normalise text to LF in the repository.
+* text=auto
+
+# Shell scripts and container configs run on Linux; a CRLF checkout on
+# Windows breaks them with a confusing "bad interpreter" error.
+*.sh          text eol=lf
+Caddyfile     text eol=lf
+Dockerfile.*  text eol=lf
+*.conf        text eol=lf
+*.yml         text eol=lf
