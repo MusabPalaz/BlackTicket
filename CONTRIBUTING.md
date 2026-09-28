@@ -12,9 +12,11 @@ Thanks for your interest. Bug reports, fixes and improvements are welcome.
 ## Contributor License Agreement
 
 Every pull request needs agreement to the [Contributor License Agreement](CLA.md).
-Tick the box in the pull request template. You keep the copyright in your work;
-the agreement lets the project be offered under AGPL-3.0 and, separately, under
-a commercial licence. Pull requests without the box ticked cannot be merged.
+On your first pull request the CLA Assistant bot asks you to sign it by
+commenting on the PR; you sign once and it covers all your later contributions.
+You keep the copyright in your work; the agreement lets the project be offered
+under AGPL-3.0 and, separately, under a commercial licence. Pull requests whose
+authors have not signed cannot be merged.
 
 ## Development setup
 

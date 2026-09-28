@@ -57,9 +57,16 @@ Maintainer is not obliged to accept or use any Contribution.
 
 ## 6. How to agree
 
-Tick the agreement box in the pull request template. Doing so, from the account
-that authored the commits, means You accept this agreement for that pull
-request and every later Contribution You submit to the project.
+When You open Your first pull request, the CLA Assistant bot comments on it and
+asks You to sign. Reply on the pull request, from the account that authored the
+commits, with exactly:
+
+    I have read the CLA Document and I hereby sign the CLA
+
+Doing so means You accept this agreement for that pull request and every later
+Contribution You submit to the project. The bot records Your GitHub user name,
+the time and the pull request in `signatures/version1/cla.json` on the
+`cla-signatures` branch; You only sign once.
 
 ---
 

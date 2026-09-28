@@ -12,4 +12,6 @@
 
 ## Contributor License Agreement
 
-- [ ] I have read the Contributor License Agreement (`CLA.md` in the repository root) and I agree to its terms for this and my future contributions.
+First pull request? The CLA Assistant bot will ask you to sign the Contributor
+License Agreement ([CLA.md](https://github.com/MusabPalaz/BlackTicket/blob/main/CLA.md)) with a comment on this PR. You only
+sign once; the check stays red until you do.
