@@ -345,7 +345,7 @@ function MailEditor({ current, onSaved }: { current: MailSettingsView; onSaved: 
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="From address" hint="Must be inside the organisation domain">
+            <Field label="From address" hint="Must be inside one of the organisation domains">
               <Input
                 value={fromAddress}
                 onChange={(event) => setFromAddress(event.target.value)}
@@ -433,8 +433,8 @@ export function OutboundMailDocsCard() {
           work, however correct the password is.
         </p>
         <p>
-          The sender must sit inside the organisation domain. That is the same rule the domain lock
-          applies to accounts: mail claiming to come from the organisation should come from it.
+          The sender must sit inside one of the organisation domains. Accounts follow the same rule:
+          mail claiming to come from the organisation should come from it.
         </p>
         <p>
           Messages are queued, never sent while someone waits. A mail host that is slow or down

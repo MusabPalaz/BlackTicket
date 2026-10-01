@@ -1,8 +1,34 @@
 import { Injectable } from '@nestjs/common';
 import { CaseStatus, Severity, formatCaseNumber } from '@black-ticket/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { slaBreachedWhere } from '../cases/sla-breach';
 
 const OPEN_STATUSES = [CaseStatus.NEW, CaseStatus.IN_PROGRESS, CaseStatus.PENDING];
+
+const DAY_MS = 86_400_000;
+
+/** Maps an instant to its `YYYY-MM-DD` as seen in a time zone. */
+function dayKeyIn(timeZone: string): (instant: Date) => string {
+  // en-CA formats dates as YYYY-MM-DD.
+  const format = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return (instant) => format.format(instant);
+}
+
+/** The time zone to count days in: the viewer's, when it is a real one. */
+export function resolveTimeZone(value: string | undefined): string {
+  if (!value || value.length > 64) return 'UTC';
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: value });
+    return value;
+  } catch {
+    return 'UTC';
+  }
+}
 
 /**
  * Numbers behind the dashboard widgets.
@@ -15,11 +41,31 @@ const OPEN_STATUSES = [CaseStatus.NEW, CaseStatus.IN_PROGRESS, CaseStatus.PENDIN
 export class MetricsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Cases opened and closed per day — the shape of the workload. */
-  async caseTrend(days: number) {
-    const since = new Date(Date.now() - (days - 1) * 86_400_000);
-    since.setHours(0, 0, 0, 0);
+  /**
+   * Cases opened and closed per day — the shape of the workload.
+   *
+   * Days are the viewer's calendar days, today included. Counting them in the
+   * server's zone (UTC in the container) put a case opened at 01:00 in
+   * Istanbul on the previous day, and a server in a zone east of UTC dropped
+   * today from the chart altogether.
+   */
+  async caseTrend(days: number, timeZone: string) {
+    const now = new Date();
+    const dayKey = dayKeyIn(timeZone);
+    const today = dayKey(now);
 
+    // Calendar arithmetic on the date itself, so a daylight-saving change
+    // cannot skip or repeat a day.
+    const [year, month, day] = today.split('-').map(Number) as [number, number, number];
+    const buckets = new Map<string, { date: string; opened: number; closed: number }>();
+    for (let offset = days - 1; offset >= 0; offset -= 1) {
+      const date = new Date(Date.UTC(year, month - 1, day - offset)).toISOString().slice(0, 10);
+      buckets.set(date, { date, opened: 0, closed: 0 });
+    }
+
+    // A day either side of the window covers every zone's offset; rows that
+    // land outside the buckets are simply not counted.
+    const since = new Date(now.getTime() - (days + 1) * DAY_MS);
     const [opened, closed] = await Promise.all([
       this.prisma.case.findMany({
         where: { deletedAt: null, createdAt: { gte: since } },
@@ -31,24 +77,16 @@ export class MetricsService {
       }),
     ]);
 
-    const buckets = new Map<string, { date: string; opened: number; closed: number }>();
-    for (let index = 0; index < days; index += 1) {
-      const day = new Date(since.getTime() + index * 86_400_000).toISOString().slice(0, 10);
-      buckets.set(day, { date: day, opened: 0, closed: 0 });
-    }
-
     for (const row of opened) {
-      const key = row.createdAt.toISOString().slice(0, 10);
-      const bucket = buckets.get(key);
+      const bucket = buckets.get(dayKey(row.createdAt));
       if (bucket) bucket.opened += 1;
     }
     for (const row of closed) {
-      const key = row.closedAt!.toISOString().slice(0, 10);
-      const bucket = buckets.get(key);
+      const bucket = buckets.get(dayKey(row.closedAt!));
       if (bucket) bucket.closed += 1;
     }
 
-    return { items: [...buckets.values()] };
+    return { timeZone, items: [...buckets.values()] };
   }
 
   async openBySeverity() {
@@ -81,23 +119,31 @@ export class MetricsService {
     };
   }
 
-  /** How the team is doing against the targets, over the chosen window. */
+  /**
+   * How the team is doing against the targets, over the chosen window.
+   *
+   * `since` goes back with the numbers so the widget's drill-downs filter on
+   * exactly the same instant — a list that also showed older closures would
+   * not add up to the figure it was opened from.
+   */
   async slaCompliance(days: number) {
-    const since = new Date(Date.now() - days * 86_400_000);
+    const now = new Date();
+    const since = new Date(now.getTime() - days * DAY_MS);
 
     const closed = await this.prisma.case.findMany({
-      where: { deletedAt: null, closedAt: { gte: since } },
-      select: { slaBreached: true, severity: true },
+      where: { deletedAt: null, status: CaseStatus.CLOSED, closedAt: { gte: since } },
+      select: { slaBreached: true },
     });
 
     const onTime = closed.filter((row) => !row.slaBreached).length;
     const breached = closed.length - onTime;
 
     const openBreached = await this.prisma.case.count({
-      where: { deletedAt: null, status: { in: OPEN_STATUSES }, slaBreached: true },
+      where: { deletedAt: null, status: { in: OPEN_STATUSES }, ...slaBreachedWhere(true, now) },
     });
 
     return {
+      since: since.toISOString(),
       closed: closed.length,
       onTime,
       breached,
@@ -108,10 +154,10 @@ export class MetricsService {
 
   /** Mean time to resolve, in hours, per severity. */
   async resolutionTime(days: number) {
-    const since = new Date(Date.now() - days * 86_400_000);
+    const since = new Date(Date.now() - days * DAY_MS);
 
     const rows = await this.prisma.case.findMany({
-      where: { deletedAt: null, closedAt: { gte: since }, resolvedAt: { not: null } },
+      where: { deletedAt: null, status: CaseStatus.CLOSED, closedAt: { gte: since } },
       select: { severity: true, occurredAt: true, closedAt: true },
     });
 
@@ -125,6 +171,7 @@ export class MetricsService {
     }
 
     return {
+      since: since.toISOString(),
       items: Object.values(Severity).map((severity) => {
         const entry = totals.get(severity);
         return {
@@ -147,16 +194,28 @@ export class MetricsService {
     const ids = grouped.map((entry) => entry.assigneeId).filter((id): id is string => Boolean(id));
     const people = await this.prisma.user.findMany({
       where: { id: { in: ids } },
-      select: { id: true, fullName: true },
+      select: { id: true, fullName: true, username: true },
     });
+
+    // Two people with the same display name would otherwise be two bars with
+    // the same label and no way to tell whose is whose.
+    const nameCount = new Map<string, number>();
+    for (const person of people) {
+      nameCount.set(person.fullName, (nameCount.get(person.fullName) ?? 0) + 1);
+    }
+    const label = (id: string) => {
+      const person = people.find((candidate) => candidate.id === id);
+      if (!person) return 'unknown';
+      return (nameCount.get(person.fullName) ?? 0) > 1
+        ? `${person.fullName} (${person.username})`
+        : person.fullName;
+    };
 
     return {
       items: grouped
         .map((entry) => ({
           id: entry.assigneeId,
-          name: entry.assigneeId
-            ? (people.find((person) => person.id === entry.assigneeId)?.fullName ?? 'unknown')
-            : 'Unassigned',
+          name: entry.assigneeId ? label(entry.assigneeId) : 'Unassigned',
           count: entry._count._all,
         }))
         .sort((a, b) => b.count - a.count)
@@ -170,7 +229,7 @@ export class MetricsService {
   }
 
   async alertsBySource(days: number) {
-    const since = new Date(Date.now() - days * 86_400_000);
+    const since = new Date(Date.now() - days * DAY_MS);
     const grouped = await this.prisma.alert.groupBy({
       by: ['source'],
       where: { receivedAt: { gte: since } },
@@ -178,6 +237,7 @@ export class MetricsService {
     });
 
     return {
+      since: since.toISOString(),
       items: grouped
         .map((entry) => ({ source: entry.source, count: entry._count._all }))
         .sort((a, b) => b.count - a.count)
@@ -185,24 +245,22 @@ export class MetricsService {
     };
   }
 
+  /**
+   * Counted in the database over every case. Reading the tag arrays into the
+   * process used to stop at 5,000 cases, which at a year's volume meant the
+   * ranking came from an arbitrary slice of them.
+   */
   async topTags(limit: number) {
-    const rows = await this.prisma.case.findMany({
-      where: { deletedAt: null },
-      select: { tags: true },
-      take: 5_000,
-    });
+    const rows = await this.prisma.$queryRaw<{ tag: string; count: bigint }[]>`
+      SELECT tag, COUNT(DISTINCT "case"."id") AS count
+      FROM "case", unnest("tags") AS tag
+      WHERE "deletedAt" IS NULL
+      GROUP BY tag
+      ORDER BY count DESC, tag ASC
+      LIMIT ${limit}
+    `;
 
-    const counts = new Map<string, number>();
-    for (const row of rows) {
-      for (const tag of row.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    }
-
-    return {
-      items: [...counts.entries()]
-        .map(([tag, count]) => ({ tag, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, limit),
-    };
+    return { items: rows.map((row) => ({ tag: row.tag, count: Number(row.count) })) };
   }
 
   /** Indicators seen on the most cases — the recurring ones worth blocking. */
@@ -261,6 +319,8 @@ export class MetricsService {
   async mitreCoverage(limit: number) {
     const grouped = await this.prisma.caseMitre.groupBy({
       by: ['techniqueId'],
+      // A deleted case is not in the list this opens, so it cannot be counted.
+      where: { case: { deletedAt: null } },
       _count: { _all: true },
       orderBy: { _count: { techniqueId: 'desc' } },
       take: limit,

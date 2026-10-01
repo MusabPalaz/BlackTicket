@@ -4,6 +4,7 @@ import {
   AuditAction,
   IdentityProvider,
   Role,
+  formatDomainList,
   isValidUsername,
   normalizeEmail,
   normalizeUsername,
@@ -398,7 +399,7 @@ export class ScimService {
     throw new ScimException(
       400,
       check.reason === 'DOMAIN_MISMATCH'
-        ? `${email} is outside the organisation domain @${check.expectedDomain}.`
+        ? `${email} is outside the organisation domain ${formatDomainList(check.expectedDomains ?? [])}.`
         : `${email} is not a valid address.`,
       'invalidValue',
     );

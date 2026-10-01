@@ -9,7 +9,7 @@ import {
 } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
-import { Alert, Button, Card, Field, cx } from '@/components/ui';
+import { Alert, Button, Card, cx } from '@/components/ui';
 import {
   SeverityChip,
   StatusChip,
@@ -22,6 +22,7 @@ import { CaseTasksTab } from './CaseTasksTab';
 import { CaseTimelineTab } from './CaseTimelineTab';
 import { CaseObservablesTab } from './CaseObservablesTab';
 import { CaseRelatedTab } from './CaseRelatedTab';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { CaseRecord, PersonRef } from './types';
 
 type Tab = 'overview' | 'tasks' | 'observables' | 'related' | 'timeline';
@@ -29,6 +30,7 @@ type Tab = 'overview' | 'tasks' | 'observables' | 'related' | 'timeline';
 export function CaseWorkspacePage() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const user = useAuthStore((state) => state.user);
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
@@ -46,11 +48,6 @@ export function CaseWorkspacePage() {
     setSearchParams(params, { replace: true });
   };
   const [error, setError] = useState<string | null>(null);
-  const [closing, setClosing] = useState(false);
-  const [closeForm, setCloseForm] = useState({
-    resolution: CaseResolution.TRUE_POSITIVE as CaseResolution,
-    summary: '',
-  });
 
   const caseQuery = useQuery({
     queryKey: ['case', id],
@@ -91,15 +88,14 @@ export function CaseWorkspacePage() {
     onError: fail,
   });
 
+  // Runs from its dialog, which shows a refusal itself and keeps the summary.
   const close = useMutation({
-    mutationFn: () => api.post(`/cases/${id}/close`, closeForm),
+    mutationFn: (body: { resolution: CaseResolution; summary: string }) =>
+      api.post(`/cases/${id}/close`, body),
     onSuccess: () => {
       setError(null);
-      setClosing(false);
-      setCloseForm({ resolution: CaseResolution.TRUE_POSITIVE, summary: '' });
       refresh();
     },
-    onError: fail,
   });
 
   const reopen = useMutation({
@@ -203,9 +199,70 @@ export function CaseWorkspacePage() {
               </Button>
             ))}
 
-          {!isClosed && canClose && <Button onClick={() => setClosing(true)}>Close case</Button>}
+          {!isClosed && canClose && (
+            <Button
+              loading={close.isPending}
+              onClick={() =>
+                void confirm({
+                  title: `Close ${record.reference}?`,
+                  body: (
+                    <p>
+                      The resolution and summary are what the next shift — and anyone who finds this
+                      case through a shared indicator — will read.
+                    </p>
+                  ),
+                  confirmLabel: 'Close case',
+                  tone: 'primary',
+                  fields: [
+                    {
+                      name: 'resolution',
+                      label: 'Resolution',
+                      kind: 'select',
+                      options: Object.values(CaseResolution).map((value) => ({
+                        value,
+                        label: value.split('_').join(' '),
+                      })),
+                    },
+                    {
+                      name: 'summary',
+                      label: 'Closing summary',
+                      kind: 'textarea',
+                      hint: 'What happened, what was done, what the next shift needs to know.',
+                      required: true,
+                      minLength: 10,
+                      maxLength: 5_000,
+                    },
+                  ],
+                  onConfirm: ({ resolution, summary }) =>
+                    close.mutateAsync({
+                      resolution: resolution as CaseResolution,
+                      summary: summary ?? '',
+                    }),
+                })
+              }
+            >
+              Close case
+            </Button>
+          )}
           {isClosed && canClose && (
-            <Button variant="secondary" onClick={() => reopen.mutate()}>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Reopen ${record.reference}?`,
+                  body: (
+                    <p>
+                      The case goes back to IN PROGRESS. Its resolution and closing time are
+                      cleared, and it counts as open work again — on the dashboard and against its
+                      SLA.
+                    </p>
+                  ),
+                  confirmLabel: 'Reopen case',
+                  tone: 'primary',
+                });
+                if (ok) reopen.mutate();
+              }}
+            >
               Reopen
             </Button>
           )}
@@ -223,49 +280,6 @@ export function CaseWorkspacePage() {
               <span className="ml-2 text-[var(--color-severity-critical)]">SLA breached</span>
             )}
           </p>
-        </Card>
-      )}
-
-      {closing && (
-        <Card title="Close case">
-          <div className="space-y-4">
-            <Field label="Resolution">
-              <select
-                value={closeForm.resolution}
-                onChange={(event) =>
-                  setCloseForm({ ...closeForm, resolution: event.target.value as CaseResolution })
-                }
-                className="w-full rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
-              >
-                {Object.values(CaseResolution).map((value) => (
-                  <option key={value} value={value}>
-                    {value.replace('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field
-              label="Closing summary"
-              hint="What happened, what was done, what the next shift needs to know."
-            >
-              <textarea
-                rows={5}
-                value={closeForm.summary}
-                onChange={(event) => setCloseForm({ ...closeForm, summary: event.target.value })}
-                className="w-full rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
-              />
-            </Field>
-
-            <div className="flex gap-2">
-              <Button loading={close.isPending} onClick={() => close.mutate()}>
-                Close case
-              </Button>
-              <Button variant="secondary" onClick={() => setClosing(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
         </Card>
       )}
 

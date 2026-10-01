@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Permission } from '@black-ticket/shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { usePreferences, useSavePreferences } from '@/lib/preferences';
 import { Button, PageHeader, StatTile, cx } from '@/components/ui';
 import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DEFAULT_LAYOUT, WIDGETS, type WidgetDefinition } from './widgets';
 import type { CaseSummaryCounters } from '@/features/cases/types';
@@ -15,16 +17,6 @@ interface LayoutEntry {
   id: string;
   width: 'half' | 'full';
 }
-
-interface Preferences {
-  dashboard?: { widgets?: LayoutEntry[] };
-}
-
-interface PreferencesResponse {
-  preferences: Preferences;
-}
-
-const PREFERENCES_KEY = ['preferences'] as const;
 
 /**
  * The layout the account has on file, or the default when it has none.
@@ -51,15 +43,12 @@ export function DashboardPage() {
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const toast = useToast();
-  const queryClient = useQueryClient();
+  const confirm = useConfirm();
   /** Unsaved local arrangement. Null means "whatever the account has on file". */
   const [draft, setDraft] = useState<LayoutEntry[] | null>(null);
   const [editing, setEditing] = useState(false);
 
-  const preferences = useQuery({
-    queryKey: PREFERENCES_KEY,
-    queryFn: () => api.get<PreferencesResponse>('/me/preferences'),
-  });
+  const preferences = usePreferences();
 
   // Derived rather than mirrored into state by an effect. A mirror starts life
   // holding the default, so every remount showed the default until the query
@@ -71,20 +60,19 @@ export function DashboardPage() {
   );
   const layout = draft ?? stored;
 
-  const save = useMutation({
-    mutationFn: (next: LayoutEntry[]) =>
-      api.put<PreferencesResponse>('/me/preferences', {
-        preferences: { dashboard: { widgets: next } },
-      }),
-    onSuccess: (result) => {
-      // The endpoint answers with the stored record, so it can seed the cache
-      // directly. Without this the cache still holds the pre-save copy and the
-      // next visit to the page reads the old layout back.
-      queryClient.setQueryData(PREFERENCES_KEY, result);
-      setDraft(null);
-      toast.success('Layout saved', 'It follows your account to any machine.');
-    },
-  });
+  const savePreferences = useSavePreferences();
+
+  function saveLayout(next: LayoutEntry[]) {
+    savePreferences.mutate(
+      { dashboard: { widgets: next } },
+      {
+        onSuccess: () => {
+          setDraft(null);
+          toast.success('Layout saved', 'It follows your account to any machine.');
+        },
+      },
+    );
+  }
 
   const counters = useQuery({
     queryKey: ['case-summary'],
@@ -131,7 +119,7 @@ export function DashboardPage() {
     {
       label: 'SLA Breached',
       value: operations.data?.sla?.breached,
-      to: '/cases?status=open',
+      to: '/cases?status=open&breached=true',
       urgent: (operations.data?.sla?.breached ?? 0) > 0,
     },
   ];
@@ -150,9 +138,15 @@ export function DashboardPage() {
             {editing && (
               <Button
                 variant="secondary"
-                onClick={() => {
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: 'Reset your dashboard?',
+                    body: <p>Your widgets, their order and their widths go back to the default.</p>,
+                    confirmLabel: 'Reset dashboard',
+                  });
+                  if (!ok) return;
                   update(DEFAULT_LAYOUT);
-                  save.mutate(DEFAULT_LAYOUT);
+                  saveLayout(DEFAULT_LAYOUT);
                 }}
               >
                 Reset to default
@@ -160,9 +154,9 @@ export function DashboardPage() {
             )}
             <Button
               variant={editing ? 'primary' : 'secondary'}
-              loading={save.isPending}
+              loading={savePreferences.isPending}
               onClick={() => {
-                if (editing) save.mutate(layout);
+                if (editing) saveLayout(layout);
                 setEditing(!editing);
               }}
             >

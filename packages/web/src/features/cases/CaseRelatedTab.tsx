@@ -6,6 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Alert, Button, Card, Field, Input, cx } from '@/components/ui';
 import { SeverityChip, StatusChip } from '@/components/case-bits';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { CaseRecord, Paginated, RelatedCase } from './types';
 
 const controlClass =
@@ -17,6 +18,7 @@ const controlClass =
  */
 export function CaseRelatedTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const [error, setError] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
@@ -225,7 +227,19 @@ export function CaseRelatedTab({ caseId, readOnly }: { caseId: string; readOnly:
                   </span>
                   {canLink && (
                     <button
-                      onClick={() => removeLink.mutate(manual.linkId)}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `Unlink ${entry.case.reference}?`,
+                          body: (
+                            <p>
+                              The manual link ({manual.reason}) is removed. Links found through
+                              shared indicators are not affected.
+                            </p>
+                          ),
+                          confirmLabel: 'Unlink',
+                        });
+                        if (ok) removeLink.mutate(manual.linkId);
+                      }}
                       className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
                     >
                       unlink

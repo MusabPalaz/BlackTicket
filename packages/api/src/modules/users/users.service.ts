@@ -11,6 +11,7 @@ import {
   ROLE_PERMISSIONS,
   type Role,
   buildEmailFromUsername,
+  formatDomainList,
   isValidUsername,
   normalizeEmail,
   normalizeUsername,
@@ -123,7 +124,7 @@ export class UsersService {
     if (!emailCheck.ok) {
       throw new BadRequestException(
         emailCheck.reason === 'DOMAIN_MISMATCH'
-          ? `E-mail must belong to the organisation domain @${emailCheck.expectedDomain}.`
+          ? `E-mail must belong to the organisation domain ${formatDomainList(emailCheck.expectedDomains ?? [])}.`
           : 'E-mail address is not valid.',
       );
     }

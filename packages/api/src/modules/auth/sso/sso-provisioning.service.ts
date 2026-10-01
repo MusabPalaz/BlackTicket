@@ -4,6 +4,7 @@ import {
   AuditAction,
   IdentityProvider,
   Role,
+  formatDomainList,
   isValidUsername,
   normalizeEmail,
   normalizeUsername,
@@ -95,7 +96,7 @@ export class SsoProvisioningService {
     await this.deny(identity, context, 'DOMAIN_MISMATCH');
     throw new ForbiddenException(
       check.reason === 'DOMAIN_MISMATCH'
-        ? `Your address is outside the organisation domain @${check.expectedDomain}.`
+        ? `Your address is outside the organisation domain ${formatDomainList(check.expectedDomains ?? [])}.`
         : 'The identity provider supplied an address this system cannot accept.',
     );
   }

@@ -57,12 +57,44 @@
 
   /* How far the signed-in backdrop's watermark recedes: the share of the veil
      that is plain surface colour. Higher means a fainter logo. */
-  --watermark-veil: 82%;
+  --watermark-veil: 55%;
 
   /* Chrome on the sign-in backdrop. Near-white, well under full strength — it
      frames the mark, it does not compete with it. */
   --color-brand-rule: oklch(0.94 0.008 265 / 0.45);
   --color-brand-star: oklch(0.94 0.008 265 / 0.72);
+}
+
+/*
+ * Tactical theme: a modern command centre rather than a game.
+ *
+ * Only the neutrals move — towards near-black and olive — and the accent turns
+ * khaki. Severity and TLP stay exactly as they are: a theme that
+ * changed what red means would be a theme nobody could trust at 3 a.m.
+ * Surfaces stay solid charcoal so text never sits on the pattern; the
+ * camouflage is for the gaps between them.
+ */
+:root[data-theme='tactical'] {
+  --color-surface: oklch(0.165 0.012 125);
+  --color-surface-raised: oklch(0.205 0.006 115);
+  --color-surface-overlay: oklch(0.25 0.008 115);
+  --color-surface-hover: oklch(0.275 0.01 118);
+
+  --color-border-subtle: oklch(0.31 0.012 120);
+  --color-border-strong: oklch(0.4 0.02 122);
+
+  --color-content: oklch(0.93 0.01 110);
+  --color-content-muted: oklch(0.7 0.02 115);
+  --color-content-faint: oklch(0.56 0.02 118);
+
+  /* Khaki, not green: a green accent would sit beside TLP green in the same
+     charts — opened next to closed, new next to imported — and read as one. */
+  --color-accent: oklch(0.8 0.07 95);
+  --color-accent-strong: oklch(0.86 0.075 95);
+  --color-accent-soft: oklch(0.8 0.07 95 / 0.14);
+
+  --color-brand-rule: oklch(0.93 0.01 110 / 0.45);
+  --color-brand-star: oklch(0.93 0.01 110 / 0.72);
 }
 
 @layer base {
@@ -188,6 +220,50 @@
       100% 100%,
       min(46rem, 62vmin) auto;
     background-blend-mode: normal, screen;
+  }
+
+  /*
+   * Tactical backdrop, back to front: digital camouflage — small square pixels
+   * in near-black, olive and field green, in patches with no grain direction; a faint plotting grid; a little film grain; and the mark
+   * on top of all three.
+   *
+   * The mark cannot share the default theme's trick of a surface-coloured veil
+   * — that veil would fade the camouflage with it — so it gets a layer of its
+   * own and fades by opacity instead. `isolation` makes the column its own
+   * stacking context, which lets that layer sit behind the content (z-index
+   * -1) without falling behind the column's own background.
+   */
+  :root[data-theme='tactical'] .app-backdrop {
+    position: relative;
+    isolation: isolate;
+    background-color: var(--color-surface);
+    background-image:
+      url('/theme/tactical-grain.svg'),
+      linear-gradient(to right, oklch(0.85 0.06 125 / 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.85 0.06 125 / 0.035) 1px, transparent 1px),
+      url('/theme/tactical-camo.svg');
+    background-repeat: repeat;
+    background-position: 0 0;
+    background-size:
+      160px 160px,
+      96px 96px,
+      96px 96px,
+      1056px 1056px;
+    background-blend-mode: normal;
+  }
+
+  :root[data-theme='tactical'] .app-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: url('/brand/logo-watermark.webp') center / min(46rem, 62vmin) auto no-repeat;
+    /* The still has a black ground; screen drops it and keeps the mark. */
+    mix-blend-mode: screen;
+    /* Stronger than the default theme's 45%: on a patterned ground the same
+       strength dissolves into the camouflage. */
+    opacity: 0.6;
   }
 
   /* The caret the sign-in wordmark types under. */

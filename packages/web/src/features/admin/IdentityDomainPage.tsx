@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatDomainList } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { Alert, Badge, Button, Card, Field, Input } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import {
   OutboundMailDocsCard,
   OutboundMailSettingsCard,
@@ -10,6 +12,7 @@ import {
 
 interface DomainPolicyView {
   domain: string | null;
+  additionalDomains: string[];
   locked: boolean;
   updatedAt: string | null;
   updatedById: string | null;
@@ -20,15 +23,17 @@ interface DomainPolicyView {
 const ENDPOINT = '/admin/settings/identity-domain';
 
 /**
- * Organisation e-mail domain.
+ * Organisation e-mail domains: a primary one plus any others the organisation
+ * mails from (one directory tenant often serves several).
  *
- * Setting it is reversible; locking it is the point of the screen — from then
- * on every account, including every row of a CSV import, must sit inside the
- * domain. Unlocking asks for the administrator's password because it removes
- * that guarantee.
+ * They apply as soon as they are saved: every account, including every row of a
+ * CSV import and every single sign-on, must sit inside one of the domains.
+ * Locking freezes the list so it cannot be changed through the normal form;
+ * unlocking asks for the administrator's password because it lifts that.
  */
 export function IdentityDomainPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const policy = useQuery({
     queryKey: ['identity-domain'],
     queryFn: () => api.get<DomainPolicyView>(ENDPOINT),
@@ -36,9 +41,8 @@ export function IdentityDomainPage() {
 
   const [domain, setDomain] = useState('');
   const [confirmDomain, setConfirmDomain] = useState('');
-  const [lockConfirm, setLockConfirm] = useState('');
-  const [unlockPassword, setUnlockPassword] = useState('');
-  const [unlockReason, setUnlockReason] = useState('');
+  const [extraDomain, setExtraDomain] = useState('');
+  const [confirmExtraDomain, setConfirmExtraDomain] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,36 +62,44 @@ export function IdentityDomainPage() {
     onSuccess: () => {
       setDomain('');
       setConfirmDomain('');
-      onSettled('Domain saved. It is not enforced until you lock it.');
+      onSettled('Domain saved. New accounts must use an organisation domain from now on.');
     },
     onError: onFailed,
   });
 
-  const lockMutation = useMutation({
-    mutationFn: (acknowledgeMismatch: boolean) =>
-      api.post<DomainPolicyView>(`${ENDPOINT}/lock`, {
-        confirmDomain: lockConfirm,
-        acknowledgeMismatch,
+  const addDomainMutation = useMutation({
+    mutationFn: () =>
+      api.post<DomainPolicyView>(`${ENDPOINT}/domains`, {
+        domain: extraDomain,
+        confirmDomain: confirmExtraDomain,
       }),
-    onSuccess: () => {
-      setLockConfirm('');
-      onSettled('Domain locked. New accounts must use it.');
+    onSuccess: (view) => {
+      setExtraDomain('');
+      setConfirmExtraDomain('');
+      onSettled(`Added @${view.additionalDomains[view.additionalDomains.length - 1]}.`);
     },
     onError: onFailed,
+  });
+
+  const removeDomainMutation = useMutation({
+    mutationFn: (domain: string) =>
+      api.delete<DomainPolicyView>(`${ENDPOINT}/domains/${encodeURIComponent(domain)}`),
+    onSuccess: (_view, domain) => onSettled(`Removed @${domain}.`),
+    onError: onFailed,
+  });
+
+  // Lock and unlock run from their dialogs, which show a failure themselves and
+  // stay open — a mistyped password should not mean starting over.
+  const lockMutation = useMutation({
+    mutationFn: (body: { confirmDomain: string; acknowledgeMismatch: boolean }) =>
+      api.post<DomainPolicyView>(`${ENDPOINT}/lock`, body),
+    onSuccess: () => onSettled('Domains locked. Changing them now requires your password.'),
   });
 
   const unlockMutation = useMutation({
-    mutationFn: () =>
-      api.post<DomainPolicyView>(`${ENDPOINT}/unlock`, {
-        password: unlockPassword,
-        reason: unlockReason,
-      }),
-    onSuccess: () => {
-      setUnlockPassword('');
-      setUnlockReason('');
-      onSettled('Domain unlocked. The change is recorded in the audit log.');
-    },
-    onError: onFailed,
+    mutationFn: (body: { password: string; reason: string }) =>
+      api.post<DomainPolicyView>(`${ENDPOINT}/unlock`, body),
+    onSuccess: () => onSettled('Domain unlocked. The change is recorded in the audit log.'),
   });
 
   if (policy.isLoading) {
@@ -103,13 +115,15 @@ export function IdentityDomainPage() {
   }
 
   const current = policy.data;
+  const allDomains = current.domain ? [current.domain, ...current.additionalDomains] : [];
 
   return (
     <div className="max-w-6xl space-y-5 p-8">
       <header>
         <h1 className="text-xl font-semibold tracking-tight">Organisation domain</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
-          Every account address must belong to this domain once it is locked.
+          Every account address must belong to one of these domains. Lock them so the list cannot be
+          changed without your password.
         </p>
       </header>
 
@@ -126,11 +140,17 @@ export function IdentityDomainPage() {
             <Card title="Current policy">
               <dl className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <dt className="text-[var(--color-content-muted)]">Domain</dt>
+                  <dt className="text-[var(--color-content-muted)]">Primary domain</dt>
                   <dd className="font-mono">
                     {current.domain ? `@${current.domain}` : 'not configured'}
                   </dd>
                 </div>
+                {current.domain && (
+                  <div className="flex items-center justify-between">
+                    <dt className="text-[var(--color-content-muted)]">Additional domains</dt>
+                    <dd>{current.additionalDomains.length || 'none'}</dd>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <dt className="text-[var(--color-content-muted)]">Status</dt>
                   <dd>
@@ -147,7 +167,7 @@ export function IdentityDomainPage() {
                     {current.totalUsers} total
                     {current.mismatchedUsers > 0 && (
                       <span className="ml-2 text-[var(--color-severity-medium)]">
-                        {current.mismatchedUsers} outside the domain
+                        {current.mismatchedUsers} outside the domains
                       </span>
                     )}
                   </dd>
@@ -158,7 +178,7 @@ export function IdentityDomainPage() {
           </div>
 
           {!current.locked && (
-            <Card title={current.domain ? 'Change domain' : 'Set domain'}>
+            <Card title={current.domain ? 'Change primary domain' : 'Set domain'}>
               <form
                 onSubmit={(event: FormEvent) => {
                   event.preventDefault();
@@ -190,71 +210,191 @@ export function IdentityDomainPage() {
             </Card>
           )}
 
+          {current.domain && (
+            <Card
+              title="Additional domains"
+              description="Other mail domains of the same organisation, for example several domains in one Entra tenant."
+            >
+              <p className="mb-4 text-sm text-[var(--color-content-muted)]">
+                Accounts, CSV imports, SCIM and single sign-on accept every domain listed here
+                exactly as they accept the primary one. Addresses derived from a bare username
+                always use <span className="font-mono">@{current.domain}</span>.
+              </p>
+              {current.additionalDomains.length > 0 ? (
+                <ul className="mb-4 divide-y divide-[var(--color-border-subtle)] rounded-[var(--radius-control)] border border-[var(--color-border-subtle)]">
+                  {current.additionalDomains.map((extra) => (
+                    <li key={extra} className="flex items-center justify-between px-3 py-2">
+                      <span className="font-mono text-sm">@{extra}</span>
+                      {!current.locked && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          type="button"
+                          loading={
+                            removeDomainMutation.isPending &&
+                            removeDomainMutation.variables === extra
+                          }
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: `Remove @${extra}?`,
+                              body: (
+                                <>
+                                  <p>No new account can be created in it.</p>
+                                  <p>
+                                    Accounts there that sign in with a local password keep working.
+                                    Single sign-on checks the domain on every sign-in, so anyone
+                                    with an address there is refused — existing accounts included.
+                                  </p>
+                                </>
+                              ),
+                              confirmLabel: 'Remove domain',
+                            });
+                            if (ok) removeDomainMutation.mutate(extra);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mb-4 text-sm text-[var(--color-content-muted)]">None yet.</p>
+              )}
+              {current.locked ? (
+                <p className="text-sm text-[var(--color-content-muted)]">
+                  The domains are locked. Unlock them to add or remove one.
+                </p>
+              ) : (
+                <form
+                  onSubmit={(event: FormEvent) => {
+                    event.preventDefault();
+                    addDomainMutation.mutate();
+                  }}
+                  className="space-y-4"
+                >
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Domain">
+                      <Input
+                        value={extraDomain}
+                        onChange={(event) => setExtraDomain(event.target.value)}
+                        placeholder="subsidiary.example.com"
+                        className="font-mono"
+                        required
+                      />
+                    </Field>
+                    <Field label="Repeat domain">
+                      <Input
+                        value={confirmExtraDomain}
+                        onChange={(event) => setConfirmExtraDomain(event.target.value)}
+                        className="font-mono"
+                        required
+                      />
+                    </Field>
+                  </div>
+                  <Button type="submit" variant="secondary" loading={addDomainMutation.isPending}>
+                    Add domain
+                  </Button>
+                </form>
+              )}
+            </Card>
+          )}
+
           {!current.locked && current.domain && (
             <Card title="Lock domain">
               <p className="mb-4 text-sm text-[var(--color-content-muted)]">
-                Locking makes <span className="font-mono">@{current.domain}</span> mandatory for
-                every account created from now on. Unlocking later requires your password and is
-                written to the audit log.
+                New accounts already have to use{' '}
+                <span className="font-mono">{formatDomainList(allDomains)}</span>. Locking stops
+                that list from being changed through this form; unlocking later requires your
+                password and is written to the audit log.
               </p>
-              <form
-                onSubmit={(event: FormEvent) => {
-                  event.preventDefault();
-                  lockMutation.mutate(current.mismatchedUsers > 0);
-                }}
-                className="space-y-4"
-              >
-                <Field label="Retype the domain to confirm">
-                  <Input
-                    value={lockConfirm}
-                    onChange={(event) => setLockConfirm(event.target.value)}
-                    className="font-mono"
-                    required
-                  />
-                </Field>
-                {current.mismatchedUsers > 0 && (
+              {current.mismatchedUsers > 0 && (
+                <div className="mb-4">
                   <Alert tone="warning">
-                    {current.mismatchedUsers} existing account(s) sit outside this domain. They keep
-                    working; only new accounts are affected.
+                    {current.mismatchedUsers} existing account(s) sit outside these domains. Those
+                    signing in with a local password keep working; through single sign-on they are
+                    refused.
                   </Alert>
-                )}
-                <Button type="submit" loading={lockMutation.isPending}>
-                  Lock domain
-                </Button>
-              </form>
+                </div>
+              )}
+              <Button
+                loading={lockMutation.isPending}
+                onClick={() => {
+                  const primary = current.domain!;
+                  void confirm({
+                    title: 'Lock the organisation domains?',
+                    body: (
+                      <p>
+                        <span className="font-mono text-[var(--color-content)]">
+                          {formatDomainList(allDomains)}
+                        </span>{' '}
+                        can then only be changed after unlocking, which asks for your password and
+                        is written to the audit log.
+                      </p>
+                    ),
+                    confirmLabel: 'Lock domains',
+                    tone: 'primary',
+                    typeToConfirm: primary,
+                    onConfirm: () =>
+                      lockMutation.mutateAsync({
+                        confirmDomain: primary,
+                        // The warning above and the dialog both said it; that is
+                        // the acknowledgement the server asks for.
+                        acknowledgeMismatch: current.mismatchedUsers > 0,
+                      }),
+                  });
+                }}
+              >
+                Lock domain…
+              </Button>
             </Card>
           )}
 
           {current.locked && (
             <Card title="Unlock domain">
-              <form
-                onSubmit={(event: FormEvent) => {
-                  event.preventDefault();
-                  unlockMutation.mutate();
-                }}
-                className="space-y-4"
+              <p className="mb-4 text-sm text-[var(--color-content-muted)]">
+                Unlocking lets the domains be changed again. It asks for your password and records a
+                reason in the audit log.
+              </p>
+              <Button
+                variant="danger"
+                loading={unlockMutation.isPending}
+                onClick={() =>
+                  void confirm({
+                    title: 'Unlock the organisation domains?',
+                    body: (
+                      <p>
+                        Until they are locked again, any administrator can change which domains
+                        accounts — and single sign-on — accept.
+                      </p>
+                    ),
+                    confirmLabel: 'Unlock',
+                    fields: [
+                      {
+                        name: 'password',
+                        label: 'Your password',
+                        kind: 'password',
+                        required: true,
+                      },
+                      {
+                        name: 'reason',
+                        label: 'Reason',
+                        hint: 'Stored in the audit trail',
+                        placeholder: 'Migrating to a new mail domain',
+                        required: true,
+                        maxLength: 500,
+                      },
+                    ],
+                    onConfirm: ({ password, reason }) =>
+                      unlockMutation.mutateAsync({
+                        password: password ?? '',
+                        reason: reason ?? '',
+                      }),
+                  })
+                }
               >
-                <Field label="Your password">
-                  <Input
-                    type="password"
-                    value={unlockPassword}
-                    onChange={(event) => setUnlockPassword(event.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
-                </Field>
-                <Field label="Reason" hint="Stored in the audit trail">
-                  <Input
-                    value={unlockReason}
-                    onChange={(event) => setUnlockReason(event.target.value)}
-                    placeholder="Migrating to a new mail domain"
-                    required
-                  />
-                </Field>
-                <Button type="submit" variant="danger" loading={unlockMutation.isPending}>
-                  Unlock
-                </Button>
-              </form>
+                Unlock…
+              </Button>
             </Card>
           )}
           <OutboundMailSettingsCard />

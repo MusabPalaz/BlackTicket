@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { API_KEY_SCOPE_LABELS, API_KEY_SCOPES, ApiKeyScope } from '@black-ticket/shared';
 import { Alert, Badge, Button, Card, Field, Input, Select } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { formatDateTime } from '@/components/case-bits';
 import type { ApiKeyRow } from '@/features/alerts/types';
 
@@ -19,12 +20,12 @@ function isExpired(key: ApiKeyRow): boolean {
  */
 export function ApiKeysPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [name, setName] = useState('');
   const [scope, setScope] = useState<ApiKeyScope>(ApiKeyScope.INGEST_WRITE);
   const [issued, setIssued] = useState<{ name: string; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Id of the row asking to be deleted; deletion never happens on one click. */
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const keys = useQuery({
     queryKey: ['api-keys'],
@@ -56,13 +57,10 @@ export function ApiKeysPage() {
     mutationFn: (id: string) => api.delete(`/admin/api-keys/${id}/permanent`),
     onSuccess: () => {
       setError(null);
-      setPendingDelete(null);
       void queryClient.invalidateQueries({ queryKey: ['api-keys'] });
     },
-    onError: (caught) => {
-      setPendingDelete(null);
-      setError(caught instanceof ApiError ? caught.detail : 'Could not reach the server.');
-    },
+    onError: (caught) =>
+      setError(caught instanceof ApiError ? caught.detail : 'Could not reach the server.'),
   });
 
   return (
@@ -229,58 +227,62 @@ export function ApiKeysPage() {
                     )}
                   </td>
                   <td className="py-2 text-right">
-                    {pendingDelete === key.id ? (
-                      /*
-                       * Spelled out rather than confirmed with a bare "are you
-                       * sure": the alerts this key brought in stay, but nothing
-                       * afterwards can say which key that was.
-                       */
-                      <span className="inline-flex flex-wrap items-center justify-end gap-2">
-                        <span className="text-xs text-[var(--color-content-muted)]">
-                          Delete for good?
-                          {key.alertCount > 0 &&
-                            ` ${key.alertCount} alert(s) lose their ingest source.`}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setPendingDelete(null)}
+                    <span className="inline-flex items-center justify-end gap-3">
+                      {!key.revokedAt && (
+                        <button
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: `Revoke ${key.name}?`,
+                              body: (
+                                <>
+                                  <p>
+                                    Anything still sending with this key is refused from the next
+                                    request — a SIEM using it stops delivering alerts until it gets
+                                    a new key.
+                                  </p>
+                                  <p>
+                                    A revoked key cannot be turned back on. Alerts it already
+                                    brought in stay.
+                                  </p>
+                                </>
+                              ),
+                              confirmLabel: 'Revoke key',
+                            });
+                            if (ok) revoke.mutate(key.id);
+                          }}
+                          className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
                         >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          loading={remove.isPending}
-                          onClick={() => remove.mutate(key.id)}
+                          revoke
+                        </button>
+                      )}
+                      {/* Only once the key is dead: the server refuses a live one. */}
+                      {(key.revokedAt || isExpired(key)) && (
+                        <button
+                          onClick={async () => {
+                            setError(null);
+                            // Spelled out rather than a bare "are you sure": the
+                            // alerts this key brought in stay, but nothing
+                            // afterwards can say which key that was.
+                            const ok = await confirm({
+                              title: `Delete ${key.name} for good?`,
+                              body: (
+                                <p>
+                                  The key is removed for good; only the audit trail keeps its name
+                                  and prefix.
+                                  {key.alertCount > 0 &&
+                                    ` The ${key.alertCount} alert(s) it brought in stay, but no longer show which key sent them.`}
+                                </p>
+                              ),
+                              confirmLabel: 'Delete key',
+                            });
+                            if (ok) remove.mutate(key.id);
+                          }}
+                          className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
                         >
-                          Delete
-                        </Button>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center justify-end gap-3">
-                        {!key.revokedAt && (
-                          <button
-                            onClick={() => revoke.mutate(key.id)}
-                            className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
-                          >
-                            revoke
-                          </button>
-                        )}
-                        {/* Only once the key is dead: the server refuses a live one. */}
-                        {(key.revokedAt || isExpired(key)) && (
-                          <button
-                            onClick={() => {
-                              setError(null);
-                              setPendingDelete(key.id);
-                            }}
-                            className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
-                          >
-                            delete
-                          </button>
-                        )}
-                      </span>
-                    )}
+                          delete
+                        </button>
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}

@@ -364,7 +364,7 @@ Single source: `packages/shared/src/permissions.ts`. Both the backend guard and 
 | Create / remove case links | ✅ | ✅ | ✅ | ❌ |
 | View the alert queue | ✅ | ✅ | ✅ | ✅ |
 | Alert → case conversion | ✅ | ✅ | ✅ | ❌ |
-| Ignore an alert | ✅ | ✅ | ⚠️ | ❌ |
+| Ignore / restore an alert | ✅ | ✅ | ❌ | ❌ |
 | Dashboard / metrics | ✅ | ✅ | ✅ | ✅ |
 | **User management** | ✅ | ❌ | ❌ | ❌ |
 | **Change roles** | ✅ | ❌ | ❌ | ❌ |
@@ -439,7 +439,8 @@ POST   /ingest/alerts               with X-Api-Key, idempotent (source + externa
 GET    /alerts                      ?status&source
 POST   /alerts/:id/import           → creates a new case, carries the observables across
 POST   /alerts/:id/merge            { caseId } → adds to an existing case
-POST   /alerts/:id/ignore
+POST   /alerts/:id/ignore           { reason? } → IGNORED (SOC lead / admin)
+POST   /alerts/:id/restore          { reason? } IGNORED → NEW (SOC lead / admin)
 ```
 
 ### Admin / CMS
@@ -455,7 +456,9 @@ GET/PATCH       /admin/settings
 GET/POST/PATCH  /admin/categories
 GET/POST/DELETE /admin/whitelist    correlation whitelist
 GET    /admin/settings/identity-domain          corporate domain policy
-PUT    /admin/settings/identity-domain          write/change the domain (refused while locked)
+PUT    /admin/settings/identity-domain          write/change the primary domain (refused while locked)
+POST   /admin/settings/identity-domain/domains          add an additional domain (refused while locked)
+DELETE /admin/settings/identity-domain/domains/:domain  remove an additional domain (refused while locked)
 POST   /admin/settings/identity-domain/lock     lock (confirmed by typing the domain again)
 POST   /admin/settings/identity-domain/unlock   unlock (password + reason, audited)
 GET    /admin/stats                 system health
@@ -542,7 +545,7 @@ The application a security team uses cannot itself be the weak link.
    ├─ Observables               table, IOC toggle, bulk add (paste → automatic parse)
    ├─ Related Cases             correlation panel
    └─ Timeline                  chronological stream of all activity (derived from the audit log)
-/alerts                         Alert queue — triage screen, import/merge/ignore
+/alerts                         Alert queue — triage screen, import/merge/ignore/restore
 /observables                    Global IOC search
 /admin/users                    User management (search, filters, bulk operations)
 /admin/users/:id                User detail — role, status, sessions, activity

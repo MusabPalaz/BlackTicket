@@ -5,6 +5,7 @@ import { AlertStatus, Permission, type Severity } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 import {
   Badge,
   Button,
@@ -17,7 +18,7 @@ import {
   Skeleton,
   cx,
 } from '@/components/ui';
-import { IconAlerts, IconClose, IconSearch } from '@/components/icons';
+import { IconAlerts, IconChevronRight, IconClose, IconSearch } from '@/components/icons';
 import { SeverityChip, formatDateTime } from '@/components/case-bits';
 import type { CaseRecord, Paginated } from '@/features/cases/types';
 import type { AlertRecord } from './types';
@@ -48,10 +49,13 @@ export function AlertsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   const status = params.get('status') ?? AlertStatus.NEW;
   const source = params.get('source') ?? '';
+  /** Set by the dashboard, whose source chart counts a recent window only. */
+  const receivedFrom = params.get('from') ?? '';
   const search = params.get('q') ?? '';
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -62,6 +66,8 @@ export function AlertsPage() {
   );
 
   const canTriage = hasPermission(Permission.ALERT_IMPORT);
+  /** Dismissing and un-dismissing are a SOC lead's call, not every analyst's. */
+  const canIgnore = hasPermission(Permission.ALERT_IGNORE);
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -73,6 +79,7 @@ export function AlertsPage() {
   const query = new URLSearchParams();
   if (status !== 'all') query.set('status', status);
   if (source) query.set('source', source);
+  if (receivedFrom) query.set('from', receivedFrom);
   if (search) query.set('q', search);
   query.set('size', '50');
 
@@ -140,8 +147,25 @@ export function AlertsPage() {
     onError: fail,
   });
 
+  const restoreAlert = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post(`/alerts/${id}/restore`, { reason: reason || undefined }),
+    onSuccess: () => {
+      toast.success(
+        'Alert back in the queue',
+        'It is NEW again; the reason is in the audit trail.',
+      );
+      refresh();
+    },
+    onError: fail,
+  });
+
   const activeFilters = [
     source && { key: 'source', label: `Source: ${source}` },
+    receivedFrom && {
+      key: 'from',
+      label: `Received since ${new Date(receivedFrom).toLocaleDateString('en-CA')}`,
+    },
     search && { key: 'q', label: `Search: ${search}` },
     status !== AlertStatus.NEW && status !== 'all' && { key: 'status', label: `Status: ${status}` },
   ].filter(Boolean) as { key: string; label: string }[];
@@ -229,17 +253,34 @@ export function AlertsPage() {
         {alerts.data?.items.map((alert) => {
           const isOpen = openId === alert.id;
           const mergeState = merge?.alertId === alert.id ? merge : null;
+          const detailsId = `alert-${alert.id}-details`;
+          const toggle = () => setOpenId(isOpen ? null : alert.id);
 
           return (
             <Card
               key={alert.id}
               className={cx(
-                'border-l-2',
+                'border-l-2 transition-colors hover:border-[var(--color-border-strong)]',
                 SEVERITY_BORDER[alert.severity] ?? 'border-l-transparent',
               )}
               bodyClassName="p-4"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              {/*
+               * The whole header opens the details for the mouse; the title is
+               * the real button, for the keyboard and screen readers. Controls
+               * in the header keep their own job, and a drag that selected text
+               * — an ID someone is copying — is not a click.
+               */}
+              <div
+                className="flex cursor-pointer flex-wrap items-start justify-between gap-3"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) {
+                    return;
+                  }
+                  if (window.getSelection()?.toString()) return;
+                  toggle();
+                }}
+              >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={STATUS_TONE[alert.status] ?? 'neutral'}>{alert.status}</Badge>
@@ -255,7 +296,21 @@ export function AlertsPage() {
                       {alert.externalId}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm font-medium">{alert.title}</p>
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    aria-expanded={isOpen}
+                    aria-controls={detailsId}
+                    className="mt-1.5 flex items-start gap-1.5 text-left text-sm font-medium hover:text-[var(--color-accent)]"
+                  >
+                    <IconChevronRight
+                      className={cx(
+                        'mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-content-faint)] transition-transform',
+                        isOpen && 'rotate-90',
+                      )}
+                    />
+                    {alert.title}
+                  </button>
                   <p className="mt-0.5 text-xs text-[var(--color-content-faint)]">
                     {formatDateTime(alert.receivedAt)}
                     {alert.case && (
@@ -273,13 +328,6 @@ export function AlertsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setOpenId(isOpen ? null : alert.id)}
-                  >
-                    {isOpen ? 'Hide' : 'Details'}
-                  </Button>
                   {canTriage && alert.status !== 'IMPORTED' && (
                     <>
                       <Button
@@ -299,24 +347,95 @@ export function AlertsPage() {
                       >
                         Merge
                       </Button>
-                      {alert.status !== 'IGNORED' && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() =>
-                            ignoreAlert.mutate({ id: alert.id, reason: 'Dismissed from the queue' })
-                          }
-                        >
-                          Ignore
-                        </Button>
-                      )}
                     </>
+                  )}
+                  {canIgnore && alert.status === 'IGNORED' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={restoreAlert.isPending && restoreAlert.variables?.id === alert.id}
+                      onClick={async () => {
+                        const answer = await confirm({
+                          title: 'Put this alert back in the queue?',
+                          body: (
+                            <p>
+                              <strong className="text-[var(--color-content)]">{alert.title}</strong>{' '}
+                              becomes NEW again and shows up in the triage queue, where it can be
+                              opened as a case, merged or ignored again.
+                            </p>
+                          ),
+                          confirmLabel: 'Restore to queue',
+                          tone: 'primary',
+                          fields: [
+                            {
+                              name: 'reason',
+                              label: 'Reason',
+                              kind: 'textarea',
+                              hint: 'Kept in the audit trail',
+                              placeholder: 'e.g. the scanner turned out not to be ours',
+                              maxLength: 500,
+                            },
+                          ],
+                        });
+                        if (answer)
+                          restoreAlert.mutate({ id: alert.id, reason: answer.values.reason ?? '' });
+                      }}
+                    >
+                      Restore
+                    </Button>
+                  )}
+                  {canIgnore && alert.status !== 'IMPORTED' && alert.status !== 'IGNORED' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        const answer = await confirm({
+                          title: 'Ignore this alert?',
+                          body: (
+                            <>
+                              <p>
+                                <strong className="text-[var(--color-content)]">
+                                  {alert.title}
+                                </strong>{' '}
+                                leaves the queue without a case, and its indicators are not
+                                correlated.
+                              </p>
+                              <p>
+                                It stays under the IGNORED filter, where it can still be opened as a
+                                case or put back in the queue.
+                              </p>
+                            </>
+                          ),
+                          confirmLabel: 'Ignore alert',
+                          fields: [
+                            {
+                              name: 'reason',
+                              label: 'Reason',
+                              kind: 'textarea',
+                              hint: 'Kept in the audit trail',
+                              placeholder: 'e.g. known scanner, false positive',
+                              maxLength: 500,
+                            },
+                          ],
+                        });
+                        if (!answer) return;
+                        ignoreAlert.mutate({
+                          id: alert.id,
+                          reason: answer.values.reason || 'Dismissed from the queue',
+                        });
+                      }}
+                    >
+                      Ignore
+                    </Button>
                   )}
                 </div>
               </div>
 
               {isOpen && (
-                <div className="animate-in mt-4 space-y-3 border-t border-[var(--color-border-subtle)] pt-4">
+                <div
+                  id={detailsId}
+                  className="animate-in mt-4 space-y-3 border-t border-[var(--color-border-subtle)] pt-4"
+                >
                   {alert.description && (
                     <p className="text-sm whitespace-pre-wrap">{alert.description}</p>
                   )}

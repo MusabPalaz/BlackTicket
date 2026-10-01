@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AlertsService } from '../alerts/alerts.service';
 import { SettingsService } from '../settings/settings.service';
+import { slaBreachedWhere } from '../cases/sla-breach';
 
 const OPEN_STATUSES = [CaseStatus.NEW, CaseStatus.IN_PROGRESS, CaseStatus.PENDING];
 
@@ -171,7 +172,11 @@ export class SlaService {
 
     const [breached, dueSoon, awaitingFirstResponse] = await Promise.all([
       this.prisma.case.count({
-        where: { deletedAt: null, status: { in: OPEN_STATUSES }, slaBreached: true },
+        where: {
+          deletedAt: null,
+          status: { in: OPEN_STATUSES },
+          ...slaBreachedWhere(true, now),
+        },
       }),
       this.prisma.case.count({
         where: {

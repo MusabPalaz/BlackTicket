@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/lib/auth-store';
+import { useSavePreferences } from '@/lib/preferences';
+import { THEMES, setTheme, useTheme, type ThemeId } from '@/lib/theme';
 import { cx } from '@/components/ui';
+import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 /** Initials from a full name, falling back to the username. */
 function initialsOf(fullName: string | undefined, username: string | undefined): string {
@@ -23,6 +27,22 @@ export function UserMenu() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
+  const theme = useTheme();
+  const savePreferences = useSavePreferences();
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  /** Applied at once, then saved to the account so it follows the person. */
+  function chooseTheme(next: ThemeId) {
+    setTheme(next);
+    savePreferences.mutate(
+      { theme: next },
+      {
+        onError: () =>
+          toast.error('Theme not saved to your account', 'It still applies in this browser.'),
+      },
+    );
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +64,18 @@ export function UserMenu() {
 
   async function onSignOut() {
     setOpen(false);
+    const ok = await confirm({
+      title: 'Sign out?',
+      body: (
+        <p>
+          This session ends and you go back to the sign-in screen. Anything not yet saved on this
+          screen is lost.
+        </p>
+      ),
+      confirmLabel: 'Sign out',
+      tone: 'primary',
+    });
+    if (!ok) return;
     await logout();
     navigate('/login', { replace: true });
   }
@@ -132,6 +164,42 @@ export function UserMenu() {
           >
             Change password
           </button>
+
+          {/* Kept open after a choice, so the two can be compared side by side. */}
+          <div
+            role="group"
+            aria-label="Theme"
+            className="border-t border-[var(--color-border-subtle)] px-4 py-3"
+          >
+            <p className="mb-2 text-[11px] tracking-wide text-[var(--color-content-muted)] uppercase">
+              Theme
+            </p>
+            <div className="flex items-center gap-2.5">
+              {THEMES.map((option) => {
+                const selected = option.id === theme;
+                return (
+                  <button
+                    key={option.id}
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    aria-label={option.label}
+                    title={`${option.label} — ${option.description}`}
+                    onClick={() => chooseTheme(option.id)}
+                    style={{ backgroundColor: option.swatch }}
+                    className={cx(
+                      'h-7 w-7 rounded-full border-2 transition-shadow',
+                      selected
+                        ? 'border-[var(--color-accent)] shadow-[0_0_0_3px_var(--color-accent-soft)]'
+                        : 'border-[var(--color-border-strong)] hover:border-[var(--color-content-muted)]',
+                    )}
+                  />
+                );
+              })}
+              <span className="ml-1 text-xs text-[var(--color-content-muted)]">
+                {THEMES.find((option) => option.id === theme)?.label}
+              </span>
+            </div>
+          </div>
 
           <div className="border-t border-[var(--color-border-subtle)]">
             <button

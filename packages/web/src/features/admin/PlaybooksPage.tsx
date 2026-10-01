@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Alert, Badge, Button, Card, Field, Input, cx } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { TagPicker } from '@/components/TagPicker';
 import type { CategoryRow } from './types';
 
@@ -47,6 +48,7 @@ const BLANK: Playbook = {
  */
 export function PlaybooksPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [draft, setDraft] = useState<Playbook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -275,7 +277,19 @@ export function PlaybooksPage() {
               <Button
                 variant="danger"
                 className="px-2 py-1 text-xs"
-                onClick={() => remove.mutate(playbook.id)}
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Delete the ${playbook.name} playbook?`,
+                    body: (
+                      <p>
+                        New cases stop getting its tasks. Tasks it already added to cases stay where
+                        they are.
+                      </p>
+                    ),
+                    confirmLabel: 'Delete playbook',
+                  });
+                  if (ok) remove.mutate(playbook.id);
+                }}
               >
                 Delete
               </Button>

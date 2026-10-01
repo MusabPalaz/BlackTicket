@@ -15,6 +15,9 @@ export class SetIdentityDomainDto {
   confirmDomain!: string;
 }
 
+/** Same shape as the primary: the domain, typed twice. */
+export class AddIdentityDomainDto extends SetIdentityDomainDto {}
+
 export class LockIdentityDomainDto {
   @ApiProperty({ description: 'Retype the domain to confirm the lock' })
   @IsString()

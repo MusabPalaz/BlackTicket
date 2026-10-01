@@ -52,11 +52,14 @@ export class SettingsService {
     this.cache.delete(key);
   }
 
-  getIdentityDomainPolicy(): Promise<IdentityDomainPolicy> {
-    return this.get<IdentityDomainPolicy>(
+  /** Filled out with the defaults, so a policy saved before `additionalDomains`
+   *  existed reads as one with an empty list. */
+  async getIdentityDomainPolicy(): Promise<IdentityDomainPolicy> {
+    const stored = await this.get<IdentityDomainPolicy>(
       IDENTITY_DOMAIN_SETTING_KEY,
       DEFAULT_IDENTITY_DOMAIN_POLICY,
     );
+    return { ...DEFAULT_IDENTITY_DOMAIN_POLICY, ...stored };
   }
 
   setIdentityDomainPolicy(policy: IdentityDomainPolicy): Promise<IdentityDomainPolicy> {

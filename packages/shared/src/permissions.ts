@@ -29,6 +29,7 @@ export const Permission = {
 
   ALERT_READ: 'alert:read',
   ALERT_IMPORT: 'alert:import',
+  /** Dismiss an alert without a case, and put a dismissed one back in the queue. */
   ALERT_IGNORE: 'alert:ignore',
 
   DASHBOARD_READ: 'dashboard:read',
@@ -54,12 +55,15 @@ const ANALYST_PERMISSIONS: readonly Permission[] = [
   Permission.OBSERVABLE_MANAGE,
   Permission.ALERT_READ,
   Permission.ALERT_IMPORT,
-  Permission.ALERT_IGNORE,
   Permission.DASHBOARD_READ,
 ];
 
 const SOC_LEAD_PERMISSIONS: readonly Permission[] = [
   ...ANALYST_PERMISSIONS,
+  // Deciding that a detection needs no case at all — and reversing that — is
+  // a lead's call: an analyst who ignores an alert takes it out of everyone's
+  // view, not just their own.
+  Permission.ALERT_IGNORE,
   Permission.CASE_UPDATE_ANY,
   Permission.CASE_ASSIGN_ANY,
   Permission.CASE_CLOSE_ANY,

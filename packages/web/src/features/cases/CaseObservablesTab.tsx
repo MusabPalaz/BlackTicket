@@ -10,6 +10,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { Alert, Button, Card, Input, cx } from '@/components/ui';
 import { formatDateTime } from '@/components/case-bits';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { AddObservablesResult, CaseObservable } from './types';
 
 const controlClass =
@@ -55,6 +56,7 @@ const EXAMPLE_VALUE: Record<ObservableType, string> = {
 
 export function CaseObservablesTab({ caseId, readOnly, onChanged }: Props) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AddObservablesResult | null>(null);
   const [paste, setPaste] = useState('');
@@ -362,7 +364,27 @@ export function CaseObservablesTab({ caseId, readOnly, onChanged }: Props) {
                     <td className="py-2 text-right">
                       {!readOnly && (
                         <button
-                          onClick={() => remove.mutate(entry.id)}
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: 'Remove this indicator from the case?',
+                              body: (
+                                <>
+                                  <p>
+                                    <span className="font-mono text-[var(--color-content)]">
+                                      {entry.observable.normalized}
+                                    </span>{' '}
+                                    ({entry.observable.type}) stops counting as seen on this case.
+                                  </p>
+                                  <p>
+                                    The automatic links it made to other cases are removed. The
+                                    indicator itself stays in the global search.
+                                  </p>
+                                </>
+                              ),
+                              confirmLabel: 'Remove indicator',
+                            });
+                            if (ok) remove.mutate(entry.id);
+                          }}
                           className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
                         >
                           remove

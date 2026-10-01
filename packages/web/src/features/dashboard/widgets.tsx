@@ -69,6 +69,14 @@ const TOOLTIP_STYLE = {
 const OPEN_STATUSES = 'NEW,IN_PROGRESS,PENDING';
 
 /**
+ * Widgets refresh on their own, at the same pace as the tiles above them.
+ * A dashboard is often left open on a wall screen, where nothing ever takes
+ * focus; without this the charts froze at whatever they showed when the page
+ * was opened, and drifted away from the tiles that did refresh.
+ */
+const REFRESH_MS = 60_000;
+
+/**
  * Recharts hands a bar click the rendered rectangle, with the row it was drawn
  * from tucked inside `payload`. Unwrapping that once here keeps every widget's
  * click handler about navigation rather than about chart internals.
@@ -147,13 +155,41 @@ function DrillHint({ children }: { children: string }) {
 
 // ---------------------------------------------------------------- widgets
 
+/** The browser's zone, which is the one the person reading the chart lives in. */
+const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** `+03:00` for a local date, so an ISO bound names the local midnight exactly. */
+function utcOffsetOf(date: Date): string {
+  const minutes = -date.getTimezoneOffset();
+  const sign = minutes >= 0 ? '+' : '-';
+  const absolute = Math.abs(minutes);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+}
+
+/**
+ * One local calendar day as an ISO window. The chart buckets by the viewer's
+ * day, so the list it opens has to start and end at the same local midnights
+ * — UTC bounds were off by the zone's offset at both ends.
+ */
+function localDayWindow(date: string): { from: string; to: string } {
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  const start = new Date(year, month - 1, day);
+  const next = new Date(year, month - 1, day + 1);
+  return {
+    from: `${date}T00:00:00.000${utcOffsetOf(start)}`,
+    to: new Date(next.getTime() - 1).toISOString(),
+  };
+}
+
 function CaseTrend() {
   const navigate = useNavigate();
   const data = useQuery({
-    queryKey: ['metrics', 'case-trend'],
+    queryKey: ['metrics', 'case-trend', TIME_ZONE],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ items: { date: string; opened: number; closed: number }[] }>(
-        '/metrics/case-trend?days=14',
+        `/metrics/case-trend?days=14&tz=${encodeURIComponent(TIME_ZONE)}`,
       ),
   });
 
@@ -197,9 +233,13 @@ function CaseTrend() {
             // filter on the same field or the row count will not match.
             onClick={onBarClick<{ date: string }>((row) => {
               if (row.date) {
-                navigate(
-                  `/cases?status=all&dateField=createdAt&from=${row.date}T00:00:00.000Z&to=${row.date}T23:59:59.999Z`,
-                );
+                const window = localDayWindow(row.date);
+                const query = new URLSearchParams({
+                  status: 'all',
+                  dateField: 'createdAt',
+                  ...window,
+                });
+                navigate(`/cases?${query.toString()}`);
               }
             })}
           />
@@ -232,6 +272,7 @@ function OpenBySeverity() {
   const navigate = useNavigate();
   const data = useQuery({
     queryKey: ['metrics', 'open-by-severity'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ items: { severity: string; count: number }[] }>('/metrics/open-by-severity'),
   });
@@ -286,8 +327,10 @@ function OpenBySeverity() {
 function SlaCompliance() {
   const data = useQuery({
     queryKey: ['metrics', 'sla'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{
+        since: string;
         closed: number;
         onTime: number;
         breached: number;
@@ -307,14 +350,16 @@ function SlaCompliance() {
     );
   }
 
-  const { compliance, onTime, breached, openBreached, closed } = data.data;
+  const { since, compliance, onTime, breached, openBreached, closed } = data.data;
 
+  // Same window, same instant as the figures: the lists have to add up to them.
+  const closedSince = `status=CLOSED&dateField=closedAt&from=${encodeURIComponent(since)}`;
   const rows: { label: string; value: number; to: string; tone?: string }[] = [
-    { label: 'Closed on time', value: onTime, to: '/cases?status=CLOSED' },
+    { label: 'Closed on time', value: onTime, to: `/cases?${closedSince}&breached=false` },
     {
       label: 'Closed after breach',
       value: breached,
-      to: '/cases?status=CLOSED&breached=true',
+      to: `/cases?${closedSince}&breached=true`,
       tone: 'text-[var(--color-severity-critical)]',
     },
     {
@@ -367,10 +412,12 @@ function ResolutionTime() {
   const navigate = useNavigate();
   const data = useQuery({
     queryKey: ['metrics', 'resolution-time'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
-      api.get<{ items: { severity: string; hours: number | null; cases: number }[] }>(
-        '/metrics/resolution-time?days=30',
-      ),
+      api.get<{
+        since: string;
+        items: { severity: string; hours: number | null; cases: number }[];
+      }>('/metrics/resolution-time?days=30'),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -406,7 +453,11 @@ function ResolutionTime() {
             dataKey="hours"
             radius={[4, 4, 0, 0]}
             onClick={onBarClick<{ severity: string }>((row) => {
-              if (row.severity) navigate(`/cases?status=CLOSED&severity=${row.severity}`);
+              if (!row.severity) return;
+              const since = encodeURIComponent(data.data.since);
+              navigate(
+                `/cases?status=CLOSED&severity=${row.severity}&dateField=closedAt&from=${since}`,
+              );
             })}
           >
             {items.map((entry) => (
@@ -424,6 +475,7 @@ function Workload() {
   const navigate = useNavigate();
   const data = useQuery({
     queryKey: ['metrics', 'workload'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ items: { id: string | null; name: string; count: number }[] }>('/metrics/workload'),
   });
@@ -478,6 +530,7 @@ function AlertsByStatus() {
   const navigate = useNavigate();
   const data = useQuery({
     queryKey: ['metrics', 'alerts-by-status'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ items: { status: string; count: number }[] }>('/metrics/alerts-by-status'),
   });
@@ -532,8 +585,11 @@ function AlertsBySource() {
   const navigate = useNavigate();
   const data = useQuery({
     queryKey: ['metrics', 'alerts-by-source'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
-      api.get<{ items: { source: string; count: number }[] }>('/metrics/alerts-by-source?days=14'),
+      api.get<{ since: string; items: { source: string; count: number }[] }>(
+        '/metrics/alerts-by-source?days=14',
+      ),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -568,8 +624,13 @@ function AlertsBySource() {
             fill="var(--color-tlp-green)"
             radius={[0, 4, 4, 0]}
             onClick={onBarClick<{ source: string }>((row) => {
-              if (row.source)
-                navigate(`/alerts?status=all&source=${encodeURIComponent(row.source)}`);
+              if (!row.source) return;
+              const query = new URLSearchParams({
+                status: 'all',
+                source: row.source,
+                from: data.data.since,
+              });
+              navigate(`/alerts?${query.toString()}`);
             })}
           />
         </BarChart>
@@ -582,6 +643,7 @@ function AlertsBySource() {
 function TopTags() {
   const data = useQuery({
     queryKey: ['metrics', 'top-tags'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ items: { tag: string; count: number }[] }>('/metrics/top-tags?limit=8'),
   });
@@ -628,6 +690,7 @@ function TopTags() {
 function TopObservables() {
   const data = useQuery({
     queryKey: ['metrics', 'top-observables'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{
         items: { id: string; type: string; value: string; sightings: number; isNoisy: boolean }[];
@@ -684,6 +747,7 @@ function TopObservables() {
 function DueSoon() {
   const data = useQuery({
     queryKey: ['metrics', 'due-soon'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{
         items: {
@@ -780,6 +844,7 @@ function DueSoon() {
 function MitreCoverage() {
   const data = useQuery({
     queryKey: ['metrics', 'mitre'],
+    refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ items: { id: string; name: string; tactic: string; count: number }[] }>(
         '/metrics/mitre-coverage?limit=8',

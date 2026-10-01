@@ -10,6 +10,7 @@ import {
   AuditAction,
   Role,
   buildEmailFromUsername,
+  formatDomainList,
   isValidUsername,
   normalizeEmail,
   normalizeUsername,
@@ -254,7 +255,7 @@ export class UsersAdminService {
       if (!check.ok) {
         throw new BadRequestException(
           check.reason === 'DOMAIN_MISMATCH'
-            ? `E-mail must belong to the organisation domain @${check.expectedDomain}.`
+            ? `E-mail must belong to the organisation domain ${formatDomainList(check.expectedDomains ?? [])}.`
             : 'E-mail address is not valid.',
         );
       }
@@ -642,7 +643,7 @@ export class UsersAdminService {
       if (!emailCheck.ok) {
         fail(
           emailCheck.reason === 'DOMAIN_MISMATCH'
-            ? `E-mail must belong to @${emailCheck.expectedDomain}.`
+            ? `E-mail must belong to ${formatDomainList(emailCheck.expectedDomains ?? [])}.`
             : 'E-mail address is not valid.',
         );
         continue;

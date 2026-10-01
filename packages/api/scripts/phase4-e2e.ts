@@ -203,21 +203,51 @@ async function main() {
 
   console.log('\nDismissing');
   const fourth = await ingest({ ...alertBody, externalId: `wazuh-${stamp}-d` }, key);
+  const analystIgnore = await post(`/alerts/${fourth.body.id}/ignore`, {}, 'analyst1');
+  check(
+    'an analyst cannot dismiss an alert',
+    analystIgnore.status === 403,
+    `status ${analystIgnore.status}`,
+  );
   const ignored = await post(
     `/alerts/${fourth.body.id}/ignore`,
     { reason: 'Known scanner' },
-    'analyst1',
+    'lead',
   );
   check(
-    'alert dismissed with a reason',
+    'a SOC lead dismisses an alert with a reason',
     ignored.body.status === 'IGNORED',
     'reason stored in the audit trail',
   );
-  const ignoreImported = await post(`/alerts/${first.body.id}/ignore`, {}, 'analyst1');
+  const ignoreImported = await post(`/alerts/${first.body.id}/ignore`, {}, 'lead');
   check(
     'an imported alert cannot be dismissed',
     ignoreImported.status === 400,
     ignoreImported.body.message,
+  );
+
+  console.log('\nRestoring');
+  const analystRestore = await post(`/alerts/${fourth.body.id}/restore`, {}, 'analyst1');
+  check(
+    'an analyst cannot restore an alert',
+    analystRestore.status === 403,
+    `status ${analystRestore.status}`,
+  );
+  const restored = await post(
+    `/alerts/${fourth.body.id}/restore`,
+    { reason: 'Scanner was not ours after all' },
+    'lead',
+  );
+  check(
+    'a SOC lead puts an ignored alert back in the queue',
+    restored.body.status === 'NEW',
+    `status ${restored.body.status}`,
+  );
+  const restoreWaiting = await post(`/alerts/${fourth.body.id}/restore`, {}, 'lead');
+  check(
+    'only an ignored alert can be restored',
+    restoreWaiting.status === 400,
+    restoreWaiting.body.message,
   );
 
   console.log('\nSLA');

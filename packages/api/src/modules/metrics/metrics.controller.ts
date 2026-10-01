@@ -5,7 +5,7 @@ import type { User } from '@prisma/client';
 import { Permission } from '@black-ticket/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MetricsService } from './metrics.service';
+import { MetricsService, resolveTimeZone } from './metrics.service';
 
 class PreferencesDto {
   @IsObject()
@@ -35,9 +35,9 @@ export class MetricsController {
 
   @Get('metrics/case-trend')
   @RequirePermissions(Permission.DASHBOARD_READ)
-  @ApiOperation({ summary: 'Cases opened and closed per day' })
-  caseTrend(@Query('days') days?: string) {
-    return this.metrics.caseTrend(windowDays(days));
+  @ApiOperation({ summary: 'Cases opened and closed per day, in the viewer’s time zone (`tz`)' })
+  caseTrend(@Query('days') days?: string, @Query('tz') tz?: string) {
+    return this.metrics.caseTrend(windowDays(days), resolveTimeZone(tz));
   }
 
   @Get('metrics/open-by-severity')

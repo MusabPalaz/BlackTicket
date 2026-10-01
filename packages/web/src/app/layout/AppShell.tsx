@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BRANDING, Permission, detectObservableType } from '@black-ticket/shared';
 import { useAuthStore } from '@/lib/auth-store';
+import { usePreferences } from '@/lib/preferences';
+import { DEFAULT_THEME, isThemeId, setTheme } from '@/lib/theme';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { NotificationBell } from '@/components/NotificationBell';
 import { UserMenu } from '@/components/UserMenu';
@@ -21,6 +23,7 @@ import {
   IconSearch,
   IconSettings,
   IconShield,
+  IconSidebar,
   IconSso,
   IconUsers,
 } from '@/components/icons';
@@ -149,9 +152,34 @@ const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'g then c', action: 'Go to cases' },
   { keys: 'g then a', action: 'Go to alerts' },
   { keys: 'g then o', action: 'Go to observables' },
+  { keys: '[', action: 'Collapse or expand the sidebar' },
   { keys: '?', action: 'This help' },
   { keys: 'Esc', action: 'Close menus and dialogs' },
 ];
+
+/**
+ * The collapsed sidebar is a per-screen choice — wanted on a laptop, not on
+ * the wall display — so it lives in this browser rather than on the account.
+ * Storage can be unavailable (private windows, blocked site data); the sidebar
+ * then simply starts expanded.
+ */
+const SIDEBAR_KEY = 'bt.sidebar.collapsed';
+
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Not remembered; nothing else depends on it.
+  }
+}
 
 function titleForPath(pathname: string): string {
   if (pathname === '/') return 'Dashboard';
@@ -171,7 +199,20 @@ export function AppShell() {
   const navigate = useNavigate();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const [helpOpen, setHelpOpen] = useState(false);
+
+  const toggleCollapsed = useCallback(() => setCollapsed((current) => !current), []);
+  useEffect(() => writeCollapsed(collapsed), [collapsed]);
+
+  // The account's theme wins over whatever this browser showed last: someone
+  // signing in at a shared console gets their own choice, or the default.
+  const preferences = usePreferences();
+  const accountTheme = preferences.data?.preferences.theme;
+  useEffect(() => {
+    if (!preferences.data) return;
+    setTheme(isThemeId(accountTheme) ? accountTheme : DEFAULT_THEME);
+  }, [preferences.data, accountTheme]);
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
@@ -277,6 +318,9 @@ export function AppShell() {
       } else if (event.key === '?') {
         event.preventDefault();
         setHelpOpen((open) => !open);
+      } else if (event.key === '[') {
+        event.preventDefault();
+        toggleCollapsed();
       } else if (event.key === 'c' && hasPermission(Permission.CASE_CREATE)) {
         event.preventDefault();
         navigate('/cases/new');
@@ -288,7 +332,7 @@ export function AppShell() {
       window.removeEventListener('keydown', onKey);
       window.clearTimeout(goTimer);
     };
-  }, [navigate, hasPermission]);
+  }, [navigate, hasPermission, toggleCollapsed]);
 
   /** An indicator goes to the IOC search; anything else searches cases. */
   function onSearch(event: React.FormEvent) {
@@ -305,84 +349,123 @@ export function AppShell() {
     searchRef.current?.blur();
   }
 
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
-    cx(
-      'group relative flex items-center gap-2.5 rounded-[var(--radius-control)] px-3 py-2 text-sm transition-colors',
-      isActive
-        ? 'bg-[var(--color-surface-overlay)] text-[var(--color-content)]'
-        : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-content)]',
-    );
+  /**
+   * The navigation, full or as a rail of icons.
+   *
+   * In the rail the labels stay in the markup for screen readers and the
+   * tooltip carries both the name and the hint, so collapsing hides text from
+   * the eye only — nothing becomes unreachable or anonymous.
+   */
+  function renderSidebar(rail: boolean) {
+    const linkClass = ({ isActive }: { isActive: boolean }) =>
+      cx(
+        'group relative flex items-center gap-2.5 rounded-[var(--radius-control)] py-2 text-sm transition-colors',
+        rail ? 'justify-center px-0' : 'px-3',
+        isActive
+          ? 'bg-[var(--color-surface-overlay)] text-[var(--color-content)]'
+          : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-content)]',
+      );
 
-  const sidebar = (
-    <div className="flex h-full flex-col bg-[var(--color-surface-raised)]">
-      <div className="flex items-center gap-2.5 border-b border-[var(--color-border-subtle)] px-5 py-4">
-        <BrandMark size="sm" />
-        <button
-          onClick={() => setDrawerOpen(false)}
-          aria-label="Close navigation"
-          className="ml-auto text-[var(--color-content-muted)] lg:hidden"
-        >
-          <IconClose className="h-4 w-4" />
-        </button>
-      </div>
-
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-        {work.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            title={item.hint}
-            className={linkClass}
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className={cx(
-                    'absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-[var(--color-accent)] transition-opacity',
-                    isActive ? 'opacity-100' : 'opacity-0',
-                  )}
-                />
-                {item.icon}
-                {item.label}
-              </>
-            )}
-          </NavLink>
-        ))}
-
-        {admin.length > 0 && (
+    const link = (item: NavItem) => (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.to === '/'}
+        title={rail ? `${item.label} — ${item.hint}` : item.hint}
+        className={linkClass}
+      >
+        {({ isActive }) => (
           <>
-            <p className="mt-5 mb-1 px-3 text-[11px] font-medium tracking-wider text-[var(--color-content-faint)] uppercase">
-              Administration
-            </p>
-            {admin.map((item) => (
-              <NavLink key={item.to} to={item.to} title={item.hint} className={linkClass}>
-                {({ isActive }) => (
-                  <>
-                    <span
-                      className={cx(
-                        'absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-[var(--color-accent)] transition-opacity',
-                        isActive ? 'opacity-100' : 'opacity-0',
-                      )}
-                    />
-                    {item.icon}
-                    {item.label}
-                  </>
-                )}
-              </NavLink>
-            ))}
+            <span
+              className={cx(
+                'absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-[var(--color-accent)] transition-opacity',
+                isActive ? 'opacity-100' : 'opacity-0',
+              )}
+            />
+            {item.icon}
+            <span className={rail ? 'sr-only' : 'truncate'}>{item.label}</span>
           </>
         )}
-      </nav>
+      </NavLink>
+    );
 
-      <button
-        onClick={() => setHelpOpen(true)}
-        className="border-t border-[var(--color-border-subtle)] px-5 py-3 text-left text-xs text-[var(--color-content-faint)] hover:text-[var(--color-content-muted)]"
-      >
-        Press <kbd>?</kbd> for keyboard shortcuts
-      </button>
-    </div>
-  );
+    return (
+      <div className="flex h-full flex-col bg-[var(--color-surface-raised)]">
+        <div
+          className={cx(
+            // A floor, so the rail (mark only, no name) is as tall and the nav does not jump.
+            'flex min-h-[67px] shrink-0 items-center gap-2.5 border-b border-[var(--color-border-subtle)] py-4',
+            rail ? 'justify-center' : 'px-5',
+          )}
+        >
+          <BrandMark size="sm" withText={!rail} />
+          <button
+            onClick={() => setDrawerOpen(false)}
+            aria-label="Close navigation"
+            className="ml-auto text-[var(--color-content-muted)] lg:hidden"
+          >
+            <IconClose className="h-4 w-4" />
+          </button>
+        </div>
+
+        <nav
+          aria-label="Main"
+          className={cx(
+            'flex-1 space-y-0.5 overflow-x-hidden overflow-y-auto',
+            rail ? 'p-2' : 'p-3',
+          )}
+        >
+          {work.map(link)}
+
+          {admin.length > 0 &&
+            (rail ? (
+              // The heading would not fit; a rule keeps the two groups apart.
+              <hr className="mx-2 my-3 border-[var(--color-border-subtle)]" />
+            ) : (
+              <p className="mt-5 mb-1 px-3 text-[11px] font-medium tracking-wider text-[var(--color-content-faint)] uppercase">
+                Administration
+              </p>
+            ))}
+          {admin.map(link)}
+        </nav>
+
+        <div
+          className={cx(
+            'flex items-center border-t border-[var(--color-border-subtle)]',
+            rail ? 'flex-col gap-1 py-2' : 'gap-2 py-2 pr-2 pl-5',
+          )}
+        >
+          <button
+            onClick={() => setHelpOpen(true)}
+            title="Keyboard shortcuts (?)"
+            className={cx(
+              'text-left text-xs text-[var(--color-content-faint)] hover:text-[var(--color-content-muted)]',
+              !rail && 'flex-1',
+            )}
+          >
+            {rail ? (
+              <kbd>?</kbd>
+            ) : (
+              <>
+                Press <kbd>?</kbd> for keyboard shortcuts
+              </>
+            )}
+          </button>
+          {/* The drawer on narrow screens is already dismissable; collapsing
+              only means something for the permanent sidebar. */}
+          <button
+            onClick={toggleCollapsed}
+            aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!rail}
+            title={rail ? 'Expand sidebar ([)' : 'Collapse sidebar ([)'}
+            className="hidden rounded-[var(--radius-control)] p-1.5 text-[var(--color-content-faint)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-content)] lg:block"
+          >
+            <IconSidebar className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full">
@@ -395,15 +478,20 @@ export function AppShell() {
 
       {/* Narrow screens get the same navigation as a drawer rather than a
           cut-down menu — an analyst on a laptop should not lose features. */}
-      <aside className="hidden w-60 shrink-0 border-r border-[var(--color-border-subtle)] lg:block">
-        {sidebar}
+      <aside
+        className={cx(
+          'hidden shrink-0 border-r border-[var(--color-border-subtle)] transition-[width] duration-200 lg:block',
+          collapsed ? 'w-16' : 'w-60',
+        )}
+      >
+        {renderSidebar(collapsed)}
       </aside>
 
       {drawerOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)} />
           <div className="animate-in absolute inset-y-0 left-0 w-64 border-r border-[var(--color-border-subtle)] shadow-[var(--shadow-overlay)]">
-            {sidebar}
+            {renderSidebar(false)}
           </div>
         </div>
       )}

@@ -185,6 +185,15 @@ export class ObservablesService {
     return result;
   }
 
+  /** For a case that stopped counting as a whole, e.g. one that was deleted. */
+  async refreshSightingsForCase(caseId: string): Promise<void> {
+    const links = await this.prisma.caseObservable.findMany({
+      where: { caseId },
+      select: { observableId: true },
+    });
+    for (const link of links) await this.refreshSightings(link.observableId);
+  }
+
   /**
    * Keeps the denormalised counter in step with reality and re-evaluates the
    * noisy flag, which is what suppresses links for ubiquitous indicators.

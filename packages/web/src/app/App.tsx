@@ -26,6 +26,7 @@ import { AlertsPage } from '@/features/alerts/AlertsPage';
 import { UsersPage } from '@/features/admin/UsersPage';
 import { useAuthStore } from '@/lib/auth-store';
 import { UNAUTHENTICATED_EVENT } from '@/lib/token-storage';
+import { DEFAULT_THEME, paintTheme, setTheme, useTheme } from '@/lib/theme';
 
 /**
  * Route table for the whole product. Every screen here is real — the phased
@@ -34,7 +35,18 @@ import { UNAUTHENTICATED_EVENT } from '@/lib/token-storage';
 export function App() {
   const restore = useAuthStore((state) => state.restore);
   const clearSession = useAuthStore((state) => state.clearSession);
+  const signedIn = useAuthStore((state) => state.user !== null);
+  const initializing = useAuthStore((state) => state.initializing);
+  const theme = useTheme();
   const queryClient = useQueryClient();
+
+  // The sign-in screen is the product's front door and always wears the
+  // default; a person's own theme starts once they are in. While the session
+  // is still being restored the first paint stands, so nothing flickers.
+  useEffect(() => {
+    if (initializing) return;
+    paintTheme(signedIn ? theme : DEFAULT_THEME);
+  }, [initializing, signedIn, theme]);
 
   useEffect(() => {
     void restore();
@@ -48,6 +60,9 @@ export function App() {
     () =>
       useAuthStore.subscribe((state, previous) => {
         if (state.user?.id !== previous.user?.id) queryClient.clear();
+        // Whoever signs in next starts from the default until their own
+        // preference loads, rather than from the previous person's choice.
+        if (!state.user && previous.user) setTheme(DEFAULT_THEME);
       }),
     [queryClient],
   );

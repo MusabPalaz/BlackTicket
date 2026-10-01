@@ -12,6 +12,7 @@ import {
   ImportAlertDto,
   ListAlertsQueryDto,
   MergeAlertDto,
+  RestoreAlertDto,
 } from './dto/alert.dto';
 
 function actorOf(user: User, request: Request): ActorContext {
@@ -89,5 +90,18 @@ export class AlertsController {
     @Req() request: Request,
   ) {
     return this.alerts.ignore(id, dto, actorOf(user, request));
+  }
+
+  @Post(':id/restore')
+  @RequirePermissions(Permission.ALERT_IGNORE)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Put an ignored alert back in the triage queue' })
+  restore(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RestoreAlertDto,
+    @CurrentUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.alerts.restore(id, dto, actorOf(user, request));
   }
 }

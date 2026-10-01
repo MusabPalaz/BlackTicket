@@ -5,6 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Alert, Badge, Button, Card, Field, Input } from '@/components/ui';
 import { formatDateTime } from '@/components/case-bits';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 /**
  * Own account: password and second factor.
@@ -16,6 +17,7 @@ export function ProfilePage() {
   const user = useAuthStore((state) => state.user);
   const refreshUser = useAuthStore((state) => state.refreshUser);
   const clearSession = useAuthStore((state) => state.clearSession);
+  const confirm = useConfirm();
 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -24,7 +26,6 @@ export function ProfilePage() {
   );
   const [code, setCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
-  const [disablePassword, setDisablePassword] = useState('');
 
   function fail(caught: unknown) {
     setNotice(null);
@@ -57,15 +58,14 @@ export function ProfilePage() {
     onError: fail,
   });
 
+  // Runs from its dialog, which shows a wrong password itself and stays open.
   const disable = useMutation({
-    mutationFn: () => api.post('/auth/totp/disable', { password: disablePassword }),
+    mutationFn: (password: string) => api.post('/auth/totp/disable', { password }),
     onSuccess: async () => {
       setError(null);
-      setDisablePassword('');
       setNotice('Two-factor authentication is off.');
       await refreshUser();
     },
-    onError: fail,
   });
 
   const signOutEverywhere = useMutation({
@@ -147,21 +147,27 @@ export function ProfilePage() {
             <p className="text-sm text-[var(--color-content-muted)]">
               Turning this off lowers the protection on your account, so it asks for your password.
             </p>
-            <Field label="Password">
-              <Input
-                type="password"
-                value={disablePassword}
-                onChange={(event) => setDisablePassword(event.target.value)}
-                autoComplete="current-password"
-              />
-            </Field>
             <Button
               variant="danger"
-              disabled={!disablePassword}
               loading={disable.isPending}
-              onClick={() => disable.mutate()}
+              onClick={() =>
+                void confirm({
+                  title: 'Turn off two-factor authentication?',
+                  body: (
+                    <p>
+                      Your authenticator and recovery codes stop working, and your password alone
+                      signs you in until you set it up again.
+                    </p>
+                  ),
+                  confirmLabel: 'Turn off',
+                  fields: [
+                    { name: 'password', label: 'Your password', kind: 'password', required: true },
+                  ],
+                  onConfirm: ({ password }) => disable.mutateAsync(password ?? ''),
+                })
+              }
             >
-              Turn off
+              Turn off…
             </Button>
           </div>
         ) : enrolment ? (
@@ -215,7 +221,24 @@ export function ProfilePage() {
         <p className="text-sm text-[var(--color-content-muted)]">
           Signing out here ends this session. Changing your password ends all of them.
         </p>
-        <Button variant="secondary" className="mt-3" onClick={() => signOutEverywhere.mutate()}>
+        <Button
+          variant="secondary"
+          className="mt-3"
+          onClick={async () => {
+            const ok = await confirm({
+              title: 'Sign out?',
+              body: (
+                <p>
+                  This session ends and you go back to the sign-in screen. Anything not yet saved on
+                  this screen is lost.
+                </p>
+              ),
+              confirmLabel: 'Sign out',
+              tone: 'primary',
+            });
+            if (ok) signOutEverywhere.mutate();
+          }}
+        >
           Sign out
         </Button>
       </Card>

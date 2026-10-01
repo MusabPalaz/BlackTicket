@@ -31,6 +31,15 @@ describe('RBAC matrix', () => {
     }
   });
 
+  it('leaves ignoring and restoring alerts to SOC_LEAD and ADMIN', () => {
+    expect(can(Role.ADMIN, Permission.ALERT_IGNORE)).toBe(true);
+    expect(can(Role.SOC_LEAD, Permission.ALERT_IGNORE)).toBe(true);
+    expect(can(Role.ANALYST, Permission.ALERT_IGNORE)).toBe(false);
+    expect(can(Role.READ_ONLY, Permission.ALERT_IGNORE)).toBe(false);
+    // Turning an alert into a case stays with the analyst.
+    expect(can(Role.ANALYST, Permission.ALERT_IMPORT)).toBe(true);
+  });
+
   it('keeps READ_ONLY strictly read-only', () => {
     expect(ROLE_PERMISSIONS[Role.READ_ONLY]).toEqual([
       Permission.CASE_READ,

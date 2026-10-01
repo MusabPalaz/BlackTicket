@@ -4,8 +4,10 @@ import {
   DEFAULT_MAIL_SETTINGS,
   MailTemplate,
   MailTransportKind,
+  formatDomainList,
   isMailReady,
   normalizeEmail,
+  organisationDomains,
   validateEmailAgainstPolicy,
   type MailSettings,
   type MailTransportConfig,
@@ -87,7 +89,7 @@ export class MailService {
     const check = validateEmailAgainstPolicy(normalizeEmail(fromAddress), domainPolicy);
     if (!check.ok) {
       throw new BadRequestException(
-        `The sender address must be inside @${domainPolicy.domain}.`,
+        `The sender address must be inside ${formatDomainList(organisationDomains(domainPolicy))}.`,
       );
     }
   }

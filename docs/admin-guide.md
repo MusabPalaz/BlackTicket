@@ -12,8 +12,8 @@ Screen labels are quoted `like this`.
 | Role | What it does |
 |---|---|
 | **ADMIN** | Everything: accounts, roles, API keys, system settings, deleting cases |
-| **SOC_LEAD** | Analyst rights + assigning/closing any case, the audit log, taxonomy (categories, playbooks, whitelist) |
-| **ANALYST** | Opening cases, updating/closing their own cases, self-assignment, managing tasks and indicators, handling alerts |
+| **SOC_LEAD** | Analyst rights + assigning/closing any case, ignoring and restoring alerts, the audit log, taxonomy (categories, playbooks, whitelist) |
+| **ANALYST** | Opening cases, updating/closing their own cases, self-assignment, managing tasks and indicators, opening cases from alerts and merging alerts into cases |
 | **READ_ONLY** | Read only: cases, alerts, dashboard |
 
 Two rules are not negotiable, and no screen can bend them:
@@ -62,16 +62,27 @@ people who opened and took them; this keeps the history from being orphaned.
 
 ## 3. Organisation domain (`Organisation domain`)
 
-You enter the organisation's e-mail domain and **lock** it. While it is locked,
-every account — created by hand, imported from CSV, or arriving through SSO — must
-be in that domain.
+You enter the organisation's e-mail domain. From the moment it is saved, every
+account — created by hand, imported from CSV, or arriving through SSO or SCIM —
+must be in that domain. Then **lock** it, so the domain cannot be changed through
+the normal form.
+
+If the organisation uses more than one mail domain (for example several domains
+on the same Entra tenant), add the others under **`Additional domains`**. Every
+listed domain is accepted exactly like the primary one, including for SSO, so a
+single tenant-wide SSO configuration covers all of them. Addresses derived from a
+bare username (CSV rows without an e-mail column) always use the primary domain.
+Additional domains can be added or removed only while the policy is unlocked.
+No new account can be created in a removed domain; existing accounts there keep
+signing in with a local password, but single sign-on checks the domain on every
+sign-in and refuses them.
 
 Unlocking is a separate operation: it asks for **an administrator password** and is
 written to the audit log with its reason. While SSO is on, the account to do this is
 the recovery account; if an account without a local password tries, the screen
 directs it to the recovery account.
 
-The sender address for outbound mail must also be inside this domain.
+The sender address for outbound mail must also be inside one of these domains.
 
 ---
 

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ObservableType } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { Alert, Button, Card, Field, Input } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { WhitelistRuleRow } from '@/features/cases/types';
 
 const controlClass =
@@ -17,6 +18,7 @@ const controlClass =
  */
 export function WhitelistPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     type: ObservableType.IP as ObservableType,
@@ -145,7 +147,22 @@ export function WhitelistPage() {
                       </td>
                       <td className="py-2 text-right">
                         <button
-                          onClick={() => remove.mutate(rule.id)}
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: 'Remove this whitelist rule?',
+                              body: (
+                                <p>
+                                  From now on{' '}
+                                  <span className="font-mono text-[var(--color-content)]">
+                                    {rule.pattern}
+                                  </span>{' '}
+                                  links cases again when it turns up on more than one.
+                                </p>
+                              ),
+                              confirmLabel: 'Remove rule',
+                            });
+                            if (ok) remove.mutate(rule.id);
+                          }}
                           className="text-xs text-[var(--color-content-muted)] hover:text-[var(--color-severity-critical)]"
                         >
                           remove

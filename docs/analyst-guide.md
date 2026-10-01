@@ -78,7 +78,8 @@ have to rebuild the filter by hand after seeing "7 breached".
 ## 4. Alerts — incoming detections
 
 SIEM/EDR systems send alerts through the API. The `Alerts` screen is their queue.
-You can do three things with an alert:
+An analyst can do two things with an alert; a SOC lead or administrator can also
+ignore it, or put an ignored one back:
 
 **`Open case`** — turns the alert into a new case. The indicators the alert carries
 are added to the case as observables and correlation runs immediately: if the same
@@ -89,12 +90,17 @@ Used when a second or third alert for the same incident arrives. Indicators alre
 on the case are not added twice; the screen shows separately which ones are new and
 which were already there.
 
-**`Ignore`** — dismisses the alert without a case. It is written to the audit log
-with a fixed reason (*"Dismissed from the queue"*); you cannot enter your own
-reason, so record why you ignored it in your handover notes. An alert that has
-already been imported cannot be ignored.
+**`Ignore`** *(SOC lead and administrator)* — dismisses the alert without a case.
+A dialog asks for confirmation and an optional reason, which is written to the
+audit log (left empty, it records *"Dismissed from the queue"*). An alert that has
+already been imported cannot be ignored. Ignored alerts stay under the `IGNORED`
+filter, where they can still be opened as a case.
 
-`Open case` and `Ignore` act immediately, without asking for confirmation.
+**`Restore`** *(SOC lead and administrator)* — puts an ignored alert back in the
+queue as `NEW`, again with an optional reason for the audit log.
+
+`Open case` acts immediately; `Ignore` and `Restore` ask for confirmation first.
+If an alert should be dismissed and you are an analyst, ask your SOC lead.
 
 If the same alert is sent twice, the system accepts it once (the source + source
 identifier pair is unique), so retries from an integration are safe.
@@ -256,6 +262,7 @@ passwords or two-factor authentication is ever sent by e-mail.
 |---|---|
 | I cannot take someone else's case | Analysts can only take cases for themselves; a SOC lead assigns |
 | I cannot see the administration menu | Your role does not have that permission |
+| I have no `Ignore` button | Dismissing alerts is for SOC leads and administrators |
 | I cannot ignore an imported alert | The alert has already become a case |
 | I cannot edit a closed case | Reopen it first; that is recorded too |
 | I cannot edit my task answer | Answers are the record; add a correcting answer beneath it |

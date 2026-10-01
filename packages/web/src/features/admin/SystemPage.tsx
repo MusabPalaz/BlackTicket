@@ -1,18 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import {
-  Alert,
-  Button,
-  Card,
-  ErrorState,
-  Field,
-  Input,
-  Select,
-  Skeleton,
-  cx,
-} from '@/components/ui';
+import { Alert, Button, Card, ErrorState, Select, Skeleton, cx } from '@/components/ui';
 import { formatDateTime } from '@/components/case-bits';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 interface Health {
   database: { reachable: boolean; latencyMs: number; sizeBytes: number };
@@ -104,22 +95,16 @@ function humanBytes(bytes: number): string {
  */
 export function SystemPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [days, setDays] = useState(90);
-  const [pending, setPending] = useState<Target | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /*
-   * Where a failure has to be shown. The page is long enough that the reset
-   * dialog sits nearly a thousand pixels below the fold, so an alert at the top
-   * reads as no answer at all.
+   * A failed purge is reported beside the purge list: the page is long enough
+   * that an alert at the top reads as no answer at all. A failed reset is
+   * reported inside its own dialog, which stays open for another try.
    */
-  const [scopedError, setScopedError] = useState<{
-    where: 'purge' | 'reset';
-    message: string;
-  } | null>(null);
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState('');
-  const [totpCode, setTotpCode] = useState('');
+  const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const health = useQuery({
     queryKey: ['system-health'],
@@ -140,19 +125,14 @@ export function SystemPage() {
       }),
     onSuccess: (result) => {
       setError(null);
-      setScopedError(null);
-      setPending(null);
+      setPurgeError(null);
       setNotice(`${result.removed} row(s) removed.`);
       void queryClient.invalidateQueries({ queryKey: ['system-purgeable'] });
       void queryClient.invalidateQueries({ queryKey: ['system-health'] });
     },
     onError: (caught) => {
       setNotice(null);
-      setPending(null);
-      setScopedError({
-        where: 'purge',
-        message: caught instanceof ApiError ? caught.detail : 'Could not reach the server.',
-      });
+      setPurgeError(caught instanceof ApiError ? caught.detail : 'Could not reach the server.');
     },
   });
 
@@ -162,33 +142,22 @@ export function SystemPage() {
   });
 
   const reset = useMutation({
-    mutationFn: () =>
-      api.post<Record<string, number>>('/admin/system/reset', { totpCode: totpCode.trim() }),
+    mutationFn: (totpCode: string) =>
+      api.post<Record<string, number>>('/admin/system/reset', { totpCode }),
+    // Failures are shown by the dialog that asked, which stays open.
     onSuccess: (removed) => {
       setError(null);
-      setScopedError(null);
-      setResetOpen(false);
-      setResetConfirm('');
-      setTotpCode('');
       const total = Object.values(removed).reduce((sum, value) => sum + value, 0);
       setNotice(
         `Reset complete — ${total.toLocaleString()} record(s) removed. Accounts are intact.`,
       );
       void queryClient.invalidateQueries();
     },
-    onError: (caught) => {
-      setNotice(null);
-      setScopedError({
-        where: 'reset',
-        message: caught instanceof ApiError ? caught.detail : 'Could not reach the server.',
-      });
-    },
   });
 
   const counts = purgeable.data;
   const removes = resetPreview.data?.removes;
   const resetTotal = removes ? Object.values(removes).reduce((sum, value) => sum + value, 0) : 0;
-  const resetReady = resetConfirm.trim() === RESET_PHRASE && totpCode.trim().length >= 6;
 
   return (
     <div className="max-w-4xl space-y-4 p-8">
@@ -332,7 +301,6 @@ export function SystemPage() {
           <Select
             value={String(days)}
             onChange={(event) => {
-              setPending(null);
               setDays(Number(event.target.value));
             }}
             className="w-44"
@@ -345,9 +313,9 @@ export function SystemPage() {
           </Select>
         }
       >
-        {scopedError?.where === 'purge' && (
+        {purgeError && (
           <div className="mb-3">
-            <Alert onDismiss={() => setScopedError(null)}>{scopedError.message}</Alert>
+            <Alert onDismiss={() => setPurgeError(null)}>{purgeError}</Alert>
           </div>
         )}
 
@@ -387,33 +355,31 @@ export function SystemPage() {
                         : count.toLocaleString()}
                   </span>
 
-                  {pending === target.key ? (
-                    <span className="flex items-center gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => setPending(null)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        loading={purge.isPending}
-                        onClick={() => purge.mutate(target.key)}
-                      >
-                        Remove {count?.toLocaleString()}
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={!count}
-                      onClick={() => {
-                        setNotice(null);
-                        setPending(target.key);
-                      }}
-                    >
-                      Remove…
-                    </Button>
-                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!count}
+                    loading={purge.isPending && purge.variables === target.key}
+                    onClick={async () => {
+                      setNotice(null);
+                      const ok = await confirm({
+                        title: `Remove ${count?.toLocaleString()} ${target.label.toLowerCase()}?`,
+                        body: (
+                          <>
+                            <p>{target.detail}</p>
+                            <p>
+                              Only rows retired more than {days} days ago. They are deleted from the
+                              database for good; the purge itself is written to the audit trail.
+                            </p>
+                          </>
+                        ),
+                        confirmLabel: `Remove ${count?.toLocaleString()}`,
+                      });
+                      if (ok) purge.mutate(target.key);
+                    }}
+                  >
+                    Remove…
+                  </Button>
                 </li>
               );
             })}
@@ -481,69 +447,38 @@ export function SystemPage() {
               </div>
             </div>
 
-            {!resetOpen ? (
-              <Button
-                variant="danger"
-                className="mt-4"
-                disabled={resetTotal === 0}
-                onClick={() => {
-                  setNotice(null);
-                  setResetConfirm('');
-                  setTotpCode('');
-                  setResetOpen(true);
-                }}
-              >
-                Reset everything…
-              </Button>
-            ) : (
-              <div
-                role="alertdialog"
-                aria-label="Confirm reset"
-                className="mt-4 space-y-3 rounded-[var(--radius-control)] border border-[var(--color-severity-critical)]/50 bg-[var(--color-severity-critical)]/8 p-3.5"
-              >
-                <p className="text-sm">
-                  This removes <strong>{resetTotal.toLocaleString()}</strong> record(s) and cannot
-                  be undone. The audit trail keeps the record of it.
-                </p>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label={`Type ${RESET_PHRASE}`}>
-                    <Input
-                      value={resetConfirm}
-                      onChange={(event) => setResetConfirm(event.target.value)}
-                      className="font-mono"
-                    />
-                  </Field>
-                  <Field label="Code from your authenticator">
-                    <Input
-                      value={totpCode}
-                      onChange={(event) => setTotpCode(event.target.value)}
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      className="font-mono tracking-widest"
-                    />
-                  </Field>
-                </div>
-
-                {scopedError?.where === 'reset' && (
-                  <Alert onDismiss={() => setScopedError(null)}>{scopedError.message}</Alert>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={() => setResetOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="danger"
-                    disabled={!resetReady}
-                    loading={reset.isPending}
-                    onClick={() => reset.mutate()}
-                  >
-                    Delete everything
-                  </Button>
-                </div>
-              </div>
-            )}
+            <Button
+              variant="danger"
+              className="mt-4"
+              disabled={resetTotal === 0}
+              onClick={() => {
+                setNotice(null);
+                void confirm({
+                  title: 'Delete every case, alert and indicator?',
+                  body: (
+                    <p>
+                      This removes <strong>{resetTotal.toLocaleString()}</strong> record(s) and
+                      cannot be undone. Accounts and configuration stay; the audit trail keeps the
+                      record of it.
+                    </p>
+                  ),
+                  confirmLabel: 'Delete everything',
+                  typeToConfirm: RESET_PHRASE,
+                  fields: [
+                    {
+                      name: 'totpCode',
+                      label: 'Code from your authenticator',
+                      kind: 'code',
+                      required: true,
+                      minLength: 6,
+                    },
+                  ],
+                  onConfirm: ({ totpCode }) => reset.mutateAsync(totpCode ?? ''),
+                });
+              }}
+            >
+              Reset everything…
+            </Button>
           </>
         )}
       </Card>

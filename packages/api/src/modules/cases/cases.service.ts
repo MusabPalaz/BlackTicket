@@ -24,6 +24,8 @@ import { AuditService } from '../audit/audit.service';
 import { TagsService } from './tags.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PlaybooksService } from './playbooks.service';
+import { ObservablesService } from '../observables/observables.service';
+import { slaBreachedWhere } from './sla-breach';
 import type {
   AssignCaseDto,
   CreateCaseDto,
@@ -55,6 +57,7 @@ export class CasesService {
     private readonly tags: TagsService,
     private readonly playbooks: PlaybooksService,
     private readonly notifications: NotificationsService,
+    private readonly observables: ObservablesService,
   ) {}
 
   // ---------------------------------------------------------------- helpers
@@ -177,13 +180,16 @@ export class CasesService {
         ...(query.to ? { lte: new Date(query.to) } : {}),
       };
       if (query.dateField === 'createdAt') where.createdAt = window;
+      else if (query.dateField === 'closedAt') where.closedAt = window;
       else where.occurredAt = window;
     }
     if (query.atRisk) {
       where.status = { notIn: [CaseStatus.RESOLVED, CaseStatus.CLOSED] };
       where.slaDueAt = { lte: new Date(Date.now() + 4 * 3_600_000) };
     }
-    if (query.breached) where.slaBreached = true;
+    // Under AND rather than merged in: both it and the free-text search below
+    // are an OR, and the second would otherwise overwrite the first.
+    if (query.breached !== undefined) where.AND = [slaBreachedWhere(query.breached)];
     if (query.unassigned) where.assigneeId = null;
     if (query.mitre) where.mitre = { some: { techniqueId: query.mitre } };
 
@@ -647,6 +653,9 @@ export class CasesService {
     const row = await this.loadOrThrow(id);
 
     await this.prisma.case.update({ where: { id }, data: { deletedAt: new Date() } });
+    // Its indicators were counted as seen on this case; without a recount they
+    // keep claiming a sighting nobody can open any more.
+    await this.observables.refreshSightingsForCase(id);
 
     await this.audit.record({
       action: AuditAction.DELETE,

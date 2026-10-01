@@ -44,6 +44,22 @@ const FILTER_KEYS = [
   'q',
 ] as const;
 
+/**
+ * "Opened on 2026-10-01" for a one-day drill-down, "Closed since 2026-09-01"
+ * for an open-ended window. Dates are the reader's local ones.
+ */
+function dateWindowLabel(params: URLSearchParams): string {
+  const field =
+    { createdAt: 'Opened', closedAt: 'Closed' }[params.get('dateField') ?? ''] ?? 'Occurred';
+  const localDate = (value: string) => new Date(value).toLocaleDateString('en-CA');
+  const from = params.get('from')!;
+  const to = params.get('to');
+  if (!to) return `${field} since ${localDate(from)}`;
+  return localDate(from) === localDate(to)
+    ? `${field} on ${localDate(from)}`
+    : `${field} ${localDate(from)} – ${localDate(to)}`;
+}
+
 export function CasesListPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -130,6 +146,7 @@ export function CasesListPage() {
     params.get('tag') && { key: 'tag', label: `Tag: ${params.get('tag')}` },
     params.get('mitre') && { key: 'mitre', label: `Technique: ${params.get('mitre')}` },
     params.get('breached') === 'true' && { key: 'breached', label: 'SLA breached' },
+    params.get('breached') === 'false' && { key: 'breached', label: 'Within SLA' },
     params.get('unassigned') === 'true' && { key: 'unassigned', label: 'Unassigned' },
     params.get('assigneeId') && {
       key: 'assigneeId',
@@ -149,9 +166,19 @@ export function CasesListPage() {
     },
     params.get('from') && {
       key: 'from',
-      label: `${params.get('dateField') === 'createdAt' ? 'Opened' : 'Occurred'} on ${params.get('from')!.slice(0, 10)}`,
+      label: dateWindowLabel(params),
+      // The window is one filter to the reader; dropping only its start
+      // would leave the end narrowing the list with no chip to show for it.
+      clears: ['from', 'to', 'dateField'],
     },
-  ].filter(Boolean) as { key: string; label: string }[];
+  ].filter(Boolean) as { key: string; label: string; clears?: string[] }[];
+
+  function removeFilter(filter: { key: string; clears?: string[] }) {
+    const next = new URLSearchParams(params);
+    for (const key of filter.clears ?? [filter.key]) next.delete(key);
+    next.delete('page');
+    setParams(next);
+  }
 
   const presets: { label: string; apply: Record<string, string> }[] = [
     { label: 'Open', apply: { status: 'open' } },
@@ -285,7 +312,7 @@ export function CasesListPage() {
             {activeFilters.map((filter) => (
               <button
                 key={filter.key}
-                onClick={() => setParam(filter.key, '')}
+                onClick={() => removeFilter(filter)}
                 className="inline-flex items-center gap-1 rounded-full border border-[var(--color-accent)]/50 bg-[var(--color-accent-soft)] px-2.5 py-0.5 text-xs text-[var(--color-accent)] hover:border-[var(--color-accent)]"
               >
                 {filter.label}

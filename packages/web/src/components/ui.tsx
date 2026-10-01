@@ -1,9 +1,4 @@
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
-} from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 /** Primitives so screens stay readable instead of drowning in classes. */
 
@@ -13,7 +8,9 @@ export function cx(...values: Array<string | false | null | undefined>): string 
 
 // ------------------------------------------------------------------ buttons
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+// ComponentProps rather than the bare attributes: it carries `ref`, which
+// React 19 passes as an ordinary prop (a dialog has to focus its safe button).
+type ButtonProps = ComponentProps<'button'> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md';
   loading?: boolean;
@@ -100,11 +97,11 @@ const fieldBase =
   'px-3 py-2 text-sm outline-none transition-colors placeholder:text-[var(--color-content-faint)] ' +
   'hover:border-[var(--color-border-strong)] focus:border-[var(--color-accent)] disabled:opacity-50';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input {...props} className={cx(fieldBase, className)} />;
 }
 
-export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ className, children, ...props }: ComponentProps<'select'>) {
   return (
     <select {...props} className={cx(fieldBase, 'cursor-pointer pr-8', className)}>
       {children}
@@ -112,10 +109,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
   );
 }
 
-export function Textarea({
-  className,
-  ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   return <textarea {...props} className={cx(fieldBase, 'resize-y', className)} />;
 }
 

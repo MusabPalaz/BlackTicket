@@ -70,8 +70,10 @@ export function SsoDocsCards() {
             because a group being renamed should not quietly hand out access.
           </p>
           <p>
-            The organisation domain still applies. Someone the directory vouches for whose address
-            sits outside a locked domain is refused, and the reason is written to the audit trail.
+            The organisation domains still apply. A tenant that serves several mail domains needs
+            each of them listed under <Term>Additional domains</Term> on the Organisation domain
+            screen; someone the directory vouches for whose address sits outside all of them is
+            refused, and the reason is written to the audit trail.
           </p>
         </div>
       </Card>

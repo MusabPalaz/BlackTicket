@@ -200,23 +200,32 @@ export class ListCasesQueryDto {
   to?: string;
 
   @ApiPropertyOptional({
-    enum: ['occurredAt', 'createdAt'],
+    enum: ['occurredAt', 'createdAt', 'closedAt'],
     default: 'occurredAt',
     description:
-      'Which date the from/to window applies to. The dashboard trend counts when cases were opened, so drilling into a day has to filter on the same field.',
+      'Which date the from/to window applies to. A dashboard figure counts on one particular date — opened, or closed — so drilling into it has to filter on the same field.',
   })
   @IsOptional()
-  @IsEnum(['occurredAt', 'createdAt'])
-  dateField?: 'occurredAt' | 'createdAt';
+  @IsEnum(['occurredAt', 'createdAt', 'closedAt'])
+  dateField?: 'occurredAt' | 'createdAt' | 'closedAt';
 
   @ApiPropertyOptional({ description: 'Only cases that breached or are near their SLA' })
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')
   atRisk?: boolean;
 
-  @ApiPropertyOptional({ description: 'Only cases already past their resolution target' })
+  @ApiPropertyOptional({
+    description:
+      'true: only cases past their resolution target; false: only cases within it. Omit for both.',
+  })
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  @Transform(({ value }) =>
+    value === true || value === 'true'
+      ? true
+      : value === false || value === 'false'
+        ? false
+        : undefined,
+  )
   breached?: boolean;
 
   @ApiPropertyOptional({ description: 'MITRE technique id, e.g. T1566.001' })

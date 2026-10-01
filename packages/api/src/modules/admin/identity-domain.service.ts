@@ -2,13 +2,16 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
   AuditAction,
   type IdentityDomainPolicy,
+  MAX_ADDITIONAL_DOMAINS,
   isValidDomain,
   normalizeDomain,
+  organisationDomains,
 } from '@black-ticket/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PasswordService } from '../../common/security/password.service';
@@ -17,7 +20,8 @@ import { SettingsService } from '../settings/settings.service';
 import { UsersService } from '../users/users.service';
 
 export interface DomainPolicyView extends IdentityDomainPolicy {
-  /** Accounts whose address sits outside the configured domain. */
+  additionalDomains: string[];
+  /** Accounts whose address sits outside every configured domain. */
   mismatchedUsers: number;
   totalUsers: number;
 }
@@ -29,12 +33,15 @@ interface Actor {
 }
 
 /**
- * The organisation e-mail domain.
+ * The organisation e-mail domains: one primary, plus any others the same
+ * organisation mails from (one directory tenant often serves several).
  *
- * An administrator sets it once and locks it; from then on every account, and
- * every row of a CSV import, must fall inside that domain. Locking is what
- * turns the setting from a convention into a constraint — so unlocking is a
- * separate, re-authenticated and audited action rather than another form field.
+ * They apply from the moment they are saved: every account, and every row of a
+ * CSV import, must fall inside one of them. Locking freezes the list, so that
+ * changing who may hold an account takes a separate, re-authenticated and
+ * audited unlock rather than another form field. The lock covers the whole
+ * list: adding a domain widens who may get an account just as surely as
+ * changing the primary does.
  */
 @Injectable()
 export class IdentityDomainService {
@@ -47,30 +54,45 @@ export class IdentityDomainService {
   ) {}
 
   async view(): Promise<DomainPolicyView> {
-    const policy = await this.settings.getIdentityDomainPolicy();
-    return { ...policy, ...(await this.countMismatches(policy.domain)) };
+    return this.present(await this.settings.getIdentityDomainPolicy());
+  }
+
+  private async present(policy: IdentityDomainPolicy): Promise<DomainPolicyView> {
+    return {
+      ...policy,
+      additionalDomains: policy.additionalDomains ?? [],
+      ...(await this.countMismatches(policy)),
+    };
   }
 
   private async countMismatches(
-    domain: string | null,
+    policy: IdentityDomainPolicy,
   ): Promise<{ mismatchedUsers: number; totalUsers: number }> {
     const totalUsers = await this.prisma.user.count({ where: { deletedAt: null } });
-    if (!domain) return { mismatchedUsers: 0, totalUsers };
+    const domains = organisationDomains(policy);
+    if (domains.length === 0) return { mismatchedUsers: 0, totalUsers };
 
     const mismatchedUsers = await this.prisma.user.count({
-      where: { deletedAt: null, NOT: { email: { endsWith: `@${normalizeDomain(domain)}` } } },
+      where: {
+        deletedAt: null,
+        NOT: { OR: domains.map((domain) => ({ email: { endsWith: `@${domain}` } })) },
+      },
     });
     return { mismatchedUsers, totalUsers };
   }
 
-  async setDomain(domain: string, confirmDomain: string, actor: Actor): Promise<DomainPolicyView> {
+  private async assertUnlocked(): Promise<IdentityDomainPolicy> {
     const current = await this.settings.getIdentityDomainPolicy();
     if (current.locked) {
       throw new ConflictException(
-        'The organisation domain is locked. Unlock it first to make a change.',
+        'The organisation domains are locked. Unlock them first to make a change.',
       );
     }
+    return current;
+  }
 
+  /** Same entry twice, then shape: a typo in a domain is a lockout waiting to happen. */
+  private confirmedDomain(domain: string, confirmDomain: string): string {
     const normalized = normalizeDomain(domain);
     if (normalizeDomain(confirmDomain) !== normalized) {
       throw new BadRequestException('The two domain entries do not match.');
@@ -80,13 +102,15 @@ export class IdentityDomainService {
         'Enter a valid domain such as blackticket.local — no scheme, no "@", no path.',
       );
     }
+    return normalized;
+  }
 
-    const updated: IdentityDomainPolicy = {
-      domain: normalized,
-      locked: false,
-      updatedAt: new Date().toISOString(),
-      updatedById: actor.id,
-    };
+  private async save(
+    current: IdentityDomainPolicy,
+    updated: IdentityDomainPolicy,
+    actor: Actor,
+    metadata?: Record<string, unknown>,
+  ): Promise<DomainPolicyView> {
     await this.settings.setIdentityDomainPolicy(updated);
 
     await this.audit.record({
@@ -98,9 +122,79 @@ export class IdentityDomainService {
       actorUserAgent: actor.userAgent,
       before: current,
       after: updated,
+      metadata,
     });
 
-    return { ...updated, ...(await this.countMismatches(normalized)) };
+    return this.present(updated);
+  }
+
+  /** Sets or replaces the primary domain. The additional ones are kept, minus
+   *  this one if it was among them. */
+  async setDomain(domain: string, confirmDomain: string, actor: Actor): Promise<DomainPolicyView> {
+    const current = await this.assertUnlocked();
+    const normalized = this.confirmedDomain(domain, confirmDomain);
+
+    const updated: IdentityDomainPolicy = {
+      domain: normalized,
+      additionalDomains: (current.additionalDomains ?? []).filter((d) => d !== normalized),
+      locked: false,
+      updatedAt: new Date().toISOString(),
+      updatedById: actor.id,
+    };
+    return this.save(current, updated, actor);
+  }
+
+  async addDomain(domain: string, confirmDomain: string, actor: Actor): Promise<DomainPolicyView> {
+    const current = await this.assertUnlocked();
+    if (!current.domain) {
+      throw new BadRequestException('Set the primary domain before adding others.');
+    }
+    const normalized = this.confirmedDomain(domain, confirmDomain);
+
+    const additional = current.additionalDomains ?? [];
+    if (organisationDomains(current).includes(normalized)) {
+      throw new ConflictException(`@${normalized} is already an organisation domain.`);
+    }
+    if (additional.length >= MAX_ADDITIONAL_DOMAINS) {
+      throw new BadRequestException(
+        `At most ${MAX_ADDITIONAL_DOMAINS} additional domains can be configured.`,
+      );
+    }
+
+    const updated: IdentityDomainPolicy = {
+      ...current,
+      additionalDomains: [...additional, normalized],
+      updatedAt: new Date().toISOString(),
+      updatedById: actor.id,
+    };
+    return this.save(current, updated, actor, { added: normalized });
+  }
+
+  /**
+   * No new account can be made in the removed domain. Existing ones there keep
+   * signing in with a local password, but single sign-on checks the domain on
+   * every sign-in and refuses them — the same as for any other address outside
+   * the policy.
+   */
+  async removeDomain(domain: string, actor: Actor): Promise<DomainPolicyView> {
+    const current = await this.assertUnlocked();
+    const normalized = normalizeDomain(domain);
+
+    if (current.domain && normalized === normalizeDomain(current.domain)) {
+      throw new BadRequestException('The primary domain cannot be removed. Change it instead.');
+    }
+    const additional = current.additionalDomains ?? [];
+    if (!additional.includes(normalized)) {
+      throw new NotFoundException(`@${normalized} is not an additional organisation domain.`);
+    }
+
+    const updated: IdentityDomainPolicy = {
+      ...current,
+      additionalDomains: additional.filter((d) => d !== normalized),
+      updatedAt: new Date().toISOString(),
+      updatedById: actor.id,
+    };
+    return this.save(current, updated, actor, { removed: normalized });
   }
 
   async lock(
@@ -117,15 +211,15 @@ export class IdentityDomainService {
       return this.view();
     }
     if (normalizeDomain(confirmDomain) !== normalizeDomain(current.domain)) {
-      throw new BadRequestException('The confirmation does not match the configured domain.');
+      throw new BadRequestException('The confirmation does not match the primary domain.');
     }
 
-    const counts = await this.countMismatches(current.domain);
+    const counts = await this.countMismatches(current);
     if (counts.mismatchedUsers > 0 && !acknowledgeMismatch) {
       // Locking with mismatched accounts is legal but rarely intended, so it
       // has to be an explicit choice rather than a surprise.
       throw new ConflictException({
-        message: `${counts.mismatchedUsers} existing account(s) are outside @${normalizeDomain(current.domain)}. Re-submit with acknowledgeMismatch to lock anyway.`,
+        message: `${counts.mismatchedUsers} existing account(s) are outside the organisation domains. Re-submit with acknowledgeMismatch to lock anyway.`,
         code: 'DOMAIN_MISMATCH_PRESENT',
         mismatchedUsers: counts.mismatchedUsers,
       });
@@ -151,7 +245,7 @@ export class IdentityDomainService {
       metadata: { mismatchedUsers: counts.mismatchedUsers },
     });
 
-    return { ...updated, ...counts };
+    return { ...updated, additionalDomains: updated.additionalDomains ?? [], ...counts };
   }
 
   async unlock(password: string, reason: string, actor: Actor): Promise<DomainPolicyView> {
@@ -198,6 +292,6 @@ export class IdentityDomainService {
       metadata: { reason },
     });
 
-    return { ...updated, ...(await this.countMismatches(current.domain)) };
+    return this.present(updated);
   }
 }

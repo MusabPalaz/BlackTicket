@@ -98,6 +98,13 @@ export class ListAlertsQueryDto {
   @MaxLength(200)
   q?: string;
 
+  @ApiPropertyOptional({
+    description: 'Only alerts received at or after this time — the dashboard counts a window',
+  })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -140,6 +147,14 @@ export class MergeAlertDto {
 
 export class IgnoreAlertDto {
   @ApiPropertyOptional({ description: 'Why it was dismissed; kept in the audit trail' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
+export class RestoreAlertDto {
+  @ApiPropertyOptional({ description: 'Why it goes back to the queue; kept in the audit trail' })
   @IsOptional()
   @IsString()
   @MaxLength(500)

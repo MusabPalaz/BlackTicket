@@ -3,9 +3,11 @@ import {
   DEFAULT_IDENTITY_DOMAIN_POLICY,
   buildEmailFromUsername,
   emailDomainOf,
+  formatDomainList,
   isValidDomain,
   isValidUsername,
   normalizeDomain,
+  organisationDomains,
   validateEmailAgainstPolicy,
   type IdentityDomainPolicy,
 } from './identity';
@@ -60,7 +62,7 @@ describe('e-mail policy', () => {
     expect(validateEmailAgainstPolicy('jane@gmail.com', locked)).toEqual({
       ok: false,
       reason: 'DOMAIN_MISMATCH',
-      expectedDomain: 'blackticket.local',
+      expectedDomains: ['blackticket.local'],
     });
   });
 
@@ -78,6 +80,68 @@ describe('e-mail policy', () => {
     for (const value of ['no-at-sign', '@nothing.local', 'spaces in@name.local', 'a@']) {
       expect(validateEmailAgainstPolicy(value, locked).ok, value).toBe(false);
     }
+  });
+});
+
+describe('several organisation domains', () => {
+  // One directory tenant, several mail domains: the case that motivated the list.
+  const group: IdentityDomainPolicy = {
+    ...locked,
+    additionalDomains: ['meridian.com', 'Meridian-Bank.co.uk', 'blackticket.local'],
+  };
+
+  it('lists the primary first, normalised and without repeats', () => {
+    expect(organisationDomains(group)).toEqual([
+      'blackticket.local',
+      'meridian.com',
+      'meridian-bank.co.uk',
+    ]);
+  });
+
+  it('treats a policy saved before the list existed as primary-only', () => {
+    const legacy = {
+      domain: 'blackticket.local',
+      locked: true,
+      updatedAt: null,
+      updatedById: null,
+    };
+    expect(organisationDomains(legacy)).toEqual(['blackticket.local']);
+    expect(validateEmailAgainstPolicy('jane@blackticket.local', legacy).ok).toBe(true);
+  });
+
+  it('ignores extra domains while no primary is set', () => {
+    const orphaned = { ...DEFAULT_IDENTITY_DOMAIN_POLICY, additionalDomains: ['meridian.com'] };
+    expect(organisationDomains(orphaned)).toEqual([]);
+    expect(validateEmailAgainstPolicy('jane@gmail.com', orphaned).ok).toBe(true);
+  });
+
+  it('accepts an address in any of the domains', () => {
+    for (const email of ['a@blackticket.local', 'b@meridian.com', 'C@MERIDIAN-BANK.CO.UK']) {
+      expect(validateEmailAgainstPolicy(email, group).ok, email).toBe(true);
+    }
+  });
+
+  it('rejects an address outside all of them and names every one', () => {
+    expect(validateEmailAgainstPolicy('jane@gmail.com', group)).toEqual({
+      ok: false,
+      reason: 'DOMAIN_MISMATCH',
+      expectedDomains: ['blackticket.local', 'meridian.com', 'meridian-bank.co.uk'],
+    });
+  });
+
+  it('matches whole domains only', () => {
+    expect(validateEmailAgainstPolicy('jane@sub.meridian.com', group).ok).toBe(false);
+    expect(validateEmailAgainstPolicy('jane@notmeridian.com', group).ok).toBe(false);
+  });
+
+  it('still derives addresses from the primary domain', () => {
+    expect(buildEmailFromUsername('jdoe', group)).toBe('jdoe@blackticket.local');
+  });
+
+  it('formats the list for messages', () => {
+    expect(formatDomainList(['a.com'])).toBe('@a.com');
+    expect(formatDomainList(['a.com', 'b.com'])).toBe('@a.com or @b.com');
+    expect(formatDomainList(['a.com', 'b.com', 'c.com'])).toBe('@a.com, @b.com or @c.com');
   });
 });
 

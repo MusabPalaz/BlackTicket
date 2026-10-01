@@ -6,6 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Alert, Badge, Button, Card, ErrorState, Field, Input, cx } from '@/components/ui';
 import { formatDateTime } from '@/components/case-bits';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { AccountDetail, AccountRow, AccountsPage } from './types';
 
 const controlClass =
@@ -13,6 +14,7 @@ const controlClass =
 
 export function UsersPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const me = useAuthStore((state) => state.user);
 
   const [query, setQuery] = useState('');
@@ -34,9 +36,6 @@ export function UsersPage() {
   const [bulkTags, setBulkTags] = useState('');
   const [bulkRole, setBulkRole] = useState<Role | ''>('');
   /** Set while a role change is waiting to be confirmed. */
-  const [pendingRole, setPendingRole] = useState<Role | null>(null);
-  const [pendingDelete, setPendingDelete] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
   /** What a batch actually did, kept until the next one replaces it. */
   const [outcome, setOutcome] = useState<{
     changed: number;
@@ -168,9 +167,6 @@ export function UsersPage() {
       setPicked([]);
       setBulkTags('');
       setBulkRole('');
-      setPendingRole(null);
-      setPendingDelete(false);
-      setDeleteConfirm('');
       setOutcome({
         changed: result.changed,
         refused: result.skipped.map((entry) => ({
@@ -435,10 +431,7 @@ export function UsersPage() {
 
             <select
               value={bulkRole}
-              onChange={(event) => {
-                setBulkRole(event.target.value as Role | '');
-                setPendingRole(null);
-              }}
+              onChange={(event) => setBulkRole(event.target.value as Role | '')}
               className={controlClass}
               aria-label="Role to apply"
             >
@@ -452,7 +445,24 @@ export function UsersPage() {
             <Button
               variant="secondary"
               disabled={!bulkRole}
-              onClick={() => setPendingRole(bulkRole as Role)}
+              onClick={async () => {
+                // A role decides what an account may do, so it does not move on
+                // one click: the dialog spells out the count, the target and the
+                // parts that are easy to forget.
+                const role = bulkRole as Role;
+                const ok = await confirm({
+                  title: `Change ${picked.length} account(s) to ${role}?`,
+                  body: (
+                    <p>
+                      Every signed-in session of those accounts ends immediately. Your own account
+                      and the last administrator are left alone.
+                    </p>
+                  ),
+                  confirmLabel: 'Change the role',
+                  tone: 'primary',
+                });
+                if (ok) bulk.mutate({ action: 'setRole', role });
+              }}
             >
               Change role
             </Button>
@@ -462,17 +472,60 @@ export function UsersPage() {
             <Button variant="secondary" onClick={() => bulk.mutate({ action: 'enable' })}>
               Enable
             </Button>
-            <Button variant="secondary" onClick={() => bulk.mutate({ action: 'disable' })}>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Disable ${picked.length} account(s)?`,
+                  body: (
+                    <p>
+                      They can no longer sign in, and every session they have open ends now. Your
+                      own account, the recovery account and the last administrator are skipped.
+                    </p>
+                  ),
+                  confirmLabel: `Disable ${picked.length}`,
+                });
+                if (ok) bulk.mutate({ action: 'disable' });
+              }}
+            >
               Disable
             </Button>
-            <Button variant="secondary" onClick={() => bulk.mutate({ action: 'forceLogout' })}>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Sign out ${picked.length} account(s)?`,
+                  body: (
+                    <p>Every session they have open ends now; they can sign straight back in.</p>
+                  ),
+                  confirmLabel: 'Sign them out',
+                });
+                if (ok) bulk.mutate({ action: 'forceLogout' });
+              }}
+            >
               Sign out
             </Button>
             <Button
               variant="danger"
-              onClick={() => {
-                setDeleteConfirm('');
-                setPendingDelete(true);
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Delete ${picked.length} account(s)?`,
+                  body: (
+                    <>
+                      <p>
+                        They are removed from the console and can no longer sign in. This cannot be
+                        undone here; disabling is the reversible alternative.
+                      </p>
+                      <p>
+                        Accounts still holding open cases are refused, and so is the recovery
+                        account.
+                      </p>
+                    </>
+                  ),
+                  confirmLabel: `Delete ${picked.length} account(s)`,
+                  typeToConfirm: String(picked.length),
+                });
+                if (ok) bulk.mutate({ action: 'delete' });
               }}
             >
               Delete…
@@ -485,72 +538,6 @@ export function UsersPage() {
               clear selection
             </button>
           </div>
-
-          {/*
-           * A role decides what an account may do, so it does not move on one
-           * click. The step spells out the count, the target and the parts
-           * that are easy to forget — sessions end, and some accounts in the
-           * selection may refuse.
-           */}
-          {pendingDelete && (
-            <div
-              role="alertdialog"
-              aria-label="Confirm deletion"
-              className="mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-severity-critical)]/50 bg-[var(--color-severity-critical)]/8 px-3.5 py-2.5 text-sm"
-            >
-              <span className="min-w-0 flex-1">
-                Delete <strong>{picked.length}</strong> account(s)? Accounts still holding open
-                cases are refused, and so is the recovery account. Type{' '}
-                <strong>{picked.length}</strong> to confirm.
-              </span>
-              <Input
-                value={deleteConfirm}
-                onChange={(event) => setDeleteConfirm(event.target.value)}
-                className="w-20 text-center"
-                aria-label="Type the number of accounts to confirm"
-              />
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setPendingDelete(false);
-                  setDeleteConfirm('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                disabled={deleteConfirm.trim() !== String(picked.length)}
-                loading={bulk.isPending}
-                onClick={() => bulk.mutate({ action: 'delete' })}
-              >
-                Delete {picked.length} account(s)
-              </Button>
-            </div>
-          )}
-
-          {pendingRole && (
-            <div
-              role="alertdialog"
-              aria-label="Confirm role change"
-              className="mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-[var(--color-severity-medium)]/50 bg-[var(--color-severity-medium)]/8 px-3.5 py-2.5 text-sm"
-            >
-              <span className="min-w-0 flex-1">
-                Change <strong>{picked.length}</strong> account(s) to <strong>{pendingRole}</strong>
-                ? Every signed-in session of those accounts ends immediately. Your own account and
-                the last administrator are left alone.
-              </span>
-              <Button variant="secondary" onClick={() => setPendingRole(null)}>
-                Cancel
-              </Button>
-              <Button
-                loading={bulk.isPending}
-                onClick={() => bulk.mutate({ action: 'setRole', role: pendingRole })}
-              >
-                Yes, change the role
-              </Button>
-            </div>
-          )}
         </Card>
       )}
 
@@ -648,9 +635,22 @@ export function UsersPage() {
                 <select
                   value={selected.user.role}
                   disabled={selected.user.id === me?.id}
-                  onChange={(event) =>
-                    updateUser.mutate({ id: selected.user.id, patch: { role: event.target.value } })
-                  }
+                  onChange={async (event) => {
+                    // The select is controlled, so a cancelled change snaps back by itself.
+                    const role = event.target.value;
+                    const ok = await confirm({
+                      title: `Make ${selected.user.username} ${role}?`,
+                      body: (
+                        <p>
+                          From {selected.user.role} to {role}. What the account may see and do
+                          changes at once, and every session it has open ends.
+                        </p>
+                      ),
+                      confirmLabel: 'Change role',
+                      tone: 'primary',
+                    });
+                    if (ok) updateUser.mutate({ id: selected.user.id, patch: { role } });
+                  }}
                   className={cx(controlClass, 'text-xs')}
                 >
                   {Object.values(Role).map((value) => (
@@ -705,12 +705,23 @@ export function UsersPage() {
                   variant="secondary"
                   className="px-2 py-1 text-xs"
                   disabled={selected.user.id === me?.id}
-                  onClick={() =>
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: `Disable ${selected.user.username}?`,
+                      body: (
+                        <p>
+                          The account can no longer sign in, and every session it has open ends now.
+                          Its cases and history stay; you can enable it again later.
+                        </p>
+                      ),
+                      confirmLabel: 'Disable account',
+                    });
+                    if (!ok) return;
                     action.mutate(
                       { id: selected.user.id, path: 'disable' },
                       { onSuccess: () => succeed('Account disabled.') },
-                    )
-                  }
+                    );
+                  }}
                 >
                   Disable
                 </Button>
@@ -733,7 +744,20 @@ export function UsersPage() {
                 variant="secondary"
                 className="px-2 py-1 text-xs"
                 loading={resetPassword.isPending}
-                onClick={() => resetPassword.mutate(selected.user.id)}
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Reset the password of ${selected.user.username}?`,
+                    body: (
+                      <p>
+                        The current password stops working and every session ends. You get a
+                        temporary password to hand over, shown once; it has to be changed at the
+                        next sign-in.
+                      </p>
+                    ),
+                    confirmLabel: 'Reset password',
+                  });
+                  if (ok) resetPassword.mutate(selected.user.id);
+                }}
               >
                 Reset password
               </Button>
@@ -741,12 +765,18 @@ export function UsersPage() {
               <Button
                 variant="secondary"
                 className="px-2 py-1 text-xs"
-                onClick={() =>
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Sign ${selected.user.username} out everywhere?`,
+                    body: <p>Every session the account has open ends now; it can sign back in.</p>,
+                    confirmLabel: 'Sign out everywhere',
+                  });
+                  if (!ok) return;
                   action.mutate(
                     { id: selected.user.id, path: 'force-logout' },
                     { onSuccess: () => succeed('All sessions ended.') },
-                  )
-                }
+                  );
+                }}
               >
                 Force logout
               </Button>
@@ -755,15 +785,26 @@ export function UsersPage() {
                 <Button
                   variant="secondary"
                   className="px-2 py-1 text-xs"
-                  onClick={() =>
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: `Reset two-factor for ${selected.user.username}?`,
+                      body: (
+                        <p>
+                          The registered authenticator and recovery codes stop working. Until the
+                          person enrols a new device, a password alone signs this account in.
+                        </p>
+                      ),
+                      confirmLabel: 'Reset two-factor',
+                    });
+                    if (!ok) return;
                     action.mutate(
                       { id: selected.user.id, path: 'reset-2fa' },
                       {
                         onSuccess: () =>
                           succeed('Two-factor cleared — the user can enrol a new device.'),
                       },
-                    )
-                  }
+                    );
+                  }}
                 >
                   Reset 2FA
                 </Button>
@@ -773,7 +814,25 @@ export function UsersPage() {
                 variant="danger"
                 className="px-2 py-1 text-xs"
                 disabled={selected.user.id === me?.id}
-                onClick={() =>
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `Delete ${selected.user.username}?`,
+                    body: (
+                      <>
+                        <p>
+                          The account is removed from the console and can no longer sign in. This
+                          cannot be undone here; disabling is the reversible alternative.
+                        </p>
+                        <p>
+                          Cases and audit entries keep its name. An account still holding open cases
+                          is refused until they are reassigned.
+                        </p>
+                      </>
+                    ),
+                    confirmLabel: 'Delete account',
+                    typeToConfirm: selected.user.username,
+                  });
+                  if (!ok) return;
                   action.mutate(
                     { id: selected.user.id, path: '', method: 'DELETE' },
                     {
@@ -782,8 +841,8 @@ export function UsersPage() {
                         succeed('Account deleted.');
                       },
                     },
-                  )
-                }
+                  );
+                }}
               >
                 Delete
               </Button>

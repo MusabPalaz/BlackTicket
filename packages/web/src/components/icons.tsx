@@ -131,6 +131,14 @@ export const IconDomain = (props: IconProps) => (
   </Icon>
 );
 
+/** A window with its side panel; the sidebar toggle. */
+export const IconSidebar = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
+  </Icon>
+);
+
 export const IconSearch = (props: IconProps) => (
   <Icon {...props}>
     <circle cx="11" cy="11" r="6.5" />

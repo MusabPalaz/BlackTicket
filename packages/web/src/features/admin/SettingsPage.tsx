@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Severity } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { Alert, Badge, Button, Card, Field, Input, cx } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { CategoryRow, SlaPolicyRow } from './types';
 
 const controlClass =
@@ -17,6 +18,7 @@ function humanMinutes(minutes: number): string {
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [category, setCategory] = useState({ slug: '', name: '', color: '#8b5cf6' });
@@ -109,7 +111,24 @@ export function SettingsPage() {
                   className="mt-0.5"
                   checked={monitoring.data?.enabled ?? true}
                   disabled={!monitoring.data || saveMonitoring.isPending}
-                  onChange={(event) => saveMonitoring.mutate({ enabled: event.target.checked })}
+                  onChange={async (event) => {
+                    const enabled = event.target.checked;
+                    // Switching it back on needs no warning; switching it off does.
+                    if (!enabled) {
+                      const ok = await confirm({
+                        title: 'Stop the SLA sweep?',
+                        body: (
+                          <p>
+                            Cases that miss their target are no longer flagged, and nobody is told
+                            about breaches, missed first responses or a growing alert backlog.
+                          </p>
+                        ),
+                        confirmLabel: 'Stop the sweep',
+                      });
+                      if (!ok) return;
+                    }
+                    saveMonitoring.mutate({ enabled });
+                  }}
                 />
                 <span>
                   <span className="block text-sm font-medium">Run the sweep</span>
@@ -125,9 +144,23 @@ export function SettingsPage() {
                   className="mt-0.5"
                   checked={monitoring.data?.notifications ?? true}
                   disabled={!monitoring.data?.enabled || saveMonitoring.isPending}
-                  onChange={(event) =>
-                    saveMonitoring.mutate({ notifications: event.target.checked })
-                  }
+                  onChange={async (event) => {
+                    const notifications = event.target.checked;
+                    if (!notifications) {
+                      const ok = await confirm({
+                        title: 'Stop SLA notifications?',
+                        body: (
+                          <p>
+                            Breaches are still marked, but nobody hears about them — no bell, no
+                            e-mail — until this is turned back on.
+                          </p>
+                        ),
+                        confirmLabel: 'Stop notifications',
+                      });
+                      if (!ok) return;
+                    }
+                    saveMonitoring.mutate({ notifications });
+                  }}
                 />
                 <span>
                   <span className="block text-sm font-medium">Send notifications</span>

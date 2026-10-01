@@ -17,6 +17,7 @@ import type {
   ImportAlertDto,
   IngestAlertDto,
   ListAlertsQueryDto,
+  RestoreAlertDto,
 } from './dto/alert.dto';
 import type { ObservableInputDto } from '../observables/dto/observable.dto';
 
@@ -140,6 +141,7 @@ export class AlertsService {
     const where: Prisma.AlertWhereInput = {
       ...(query.status ? { status: query.status } : {}),
       ...(query.source ? { source: query.source } : {}),
+      ...(query.from ? { receivedAt: { gte: new Date(query.from) } } : {}),
       ...(query.q
         ? {
             OR: [
@@ -318,6 +320,37 @@ export class AlertsService {
     });
 
     return { id, status: AlertStatus.IGNORED };
+  }
+
+  /**
+   * Undoes a dismissal: the alert is NEW again and back in the triage queue, at
+   * the place its arrival time gives it, so whoever picks it up handles it the
+   * normal way.
+   * Only an ignored alert can be restored — one that became a case is dealt
+   * with on the case, and a waiting one has nothing to undo.
+   */
+  async restore(id: string, dto: RestoreAlertDto, actor: ActorContext) {
+    const alert = await this.prisma.alert.findUnique({ where: { id } });
+    if (!alert) throw new NotFoundException('Alert not found');
+    if (alert.status !== AlertStatus.IGNORED) {
+      throw new BadRequestException('Only an ignored alert can be put back in the queue.');
+    }
+
+    await this.prisma.alert.update({ where: { id }, data: { status: AlertStatus.NEW } });
+
+    await this.audit.record({
+      action: AuditAction.ALERT_RESTORED,
+      entityType: 'Alert',
+      entityId: id,
+      actorId: actor.user.id,
+      actorIp: actor.ip,
+      actorUserAgent: actor.userAgent,
+      before: { status: AlertStatus.IGNORED },
+      after: { status: AlertStatus.NEW },
+      metadata: { reason: dto.reason, source: alert.source, externalId: alert.externalId },
+    });
+
+    return { id, status: AlertStatus.NEW };
   }
 
   /** Used by the dashboard to show how long the queue has been waiting. */

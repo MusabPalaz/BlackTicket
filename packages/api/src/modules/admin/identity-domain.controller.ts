@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Put,
   Req,
@@ -17,6 +19,7 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.de
 import { ReauthThrottleGuard } from '../../common/guards/reauth-throttle.guard';
 import { IdentityDomainService } from './identity-domain.service';
 import {
+  AddIdentityDomainDto,
   LockIdentityDomainDto,
   SetIdentityDomainDto,
   UnlockIdentityDomainDto,
@@ -42,6 +45,22 @@ export class IdentityDomainController {
   @ApiOperation({ summary: 'Set or change the organisation domain (blocked while locked)' })
   set(@Body() dto: SetIdentityDomainDto, @CurrentUser() user: User, @Req() request: Request) {
     return this.domains.setDomain(dto.domain, dto.confirmDomain, this.actorOf(user, request));
+  }
+
+  @Post('domains')
+  @ApiOperation({ summary: 'Add another organisation domain (blocked while locked)' })
+  addDomain(@Body() dto: AddIdentityDomainDto, @CurrentUser() user: User, @Req() request: Request) {
+    return this.domains.addDomain(dto.domain, dto.confirmDomain, this.actorOf(user, request));
+  }
+
+  @Delete('domains/:domain')
+  @ApiOperation({ summary: 'Remove an additional organisation domain (blocked while locked)' })
+  removeDomain(
+    @Param('domain') domain: string,
+    @CurrentUser() user: User,
+    @Req() request: Request,
+  ) {
+    return this.domains.removeDomain(domain, this.actorOf(user, request));
   }
 
   @Post('lock')

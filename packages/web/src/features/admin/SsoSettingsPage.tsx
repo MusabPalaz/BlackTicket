@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Role } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { Alert, Badge, Button, Card, Field, Input, Select, cx } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { SsoDocsCards } from './SsoDocsCards';
 
 interface RoleMapping {
@@ -58,6 +59,7 @@ export function SsoSettingsPage() {
 
 function PolicyEditor({ current }: { current: AuthPolicyView }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const [issuer, setIssuer] = useState(current.oidc?.issuer ?? '');
   const [clientId, setClientId] = useState(current.oidc?.clientId ?? '');
@@ -384,7 +386,38 @@ function PolicyEditor({ current }: { current: AuthPolicyView }) {
                   variant={ssoOn ? 'secondary' : 'primary'}
                   disabled={!ssoOn && (!configured || !current.hasRecoveryAccount)}
                   loading={save.isPending}
-                  onClick={() => save.mutate(ssoOn ? 'LOCAL' : 'SSO')}
+                  onClick={async () => {
+                    const ok = await confirm(
+                      ssoOn
+                        ? {
+                            title: 'Switch back to local accounts?',
+                            body: (
+                              <p>
+                                Accounts created by single sign-on have no local password, so they
+                                cannot sign in until it is turned back on.
+                              </p>
+                            ),
+                            confirmLabel: 'Switch to local accounts',
+                          }
+                        : {
+                            title: 'Turn single sign-on on?',
+                            body: (
+                              <>
+                                <p>
+                                  From the next sign-in everyone goes through the identity provider;
+                                  local passwords keep working for the break-glass account only.
+                                </p>
+                                <p>
+                                  Keep this tab open and try a sign-in in a private window before
+                                  you sign out.
+                                </p>
+                              </>
+                            ),
+                            confirmLabel: 'Turn on single sign-on',
+                          },
+                    );
+                    if (ok) save.mutate(ssoOn ? 'LOCAL' : 'SSO');
+                  }}
                 >
                   {ssoOn ? 'Switch back to local accounts' : 'Enable single sign-on'}
                 </Button>
