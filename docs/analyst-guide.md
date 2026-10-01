@@ -227,6 +227,26 @@ If a shared indicator is correlation noise (such as the organisation's own egres
 IP), a SOC lead can add it to the `Correlation Whitelist`; that indicator will not
 link cases again.
 
+### `Attack Map`
+The campaign this case belongs to, and where it may go next. It is built from what
+the team already has: correlation links and the ATT&CK techniques tagged on cases.
+
+- **Kill Chain** — the fourteen ATT&CK stages. Stages reached somewhere in the
+  campaign are filled, a dot marks this case's own, and the likely next stages are
+  outlined in orange.
+- **Campaign** — this case and the cases linked to it (up to three links out, at
+  most 40 cases), left to right in the order they happened. Arcs are correlations
+  (dashed where an analyst made the link); hover one to see the shared indicators.
+  Each case sits in the lanes of the tactics tagged on it. Click a case to open
+  its own map.
+- **Next Likely Moves** — two answers, kept apart. *From your own history*: in
+  other campaigns, which techniques the next linked case carried after these ones,
+  and how often. *From the ATT&CK kill chain*: the stages that follow the furthest
+  one reached, with the techniques your team tags most under them.
+
+These are patterns, not certainties. They get better as more cases are tagged with
+techniques and linked by their indicators.
+
 ### `Timeline`
 Who did what, and when. Activity only; answer texts stay on their task. Grouped by
 day, with things that happened at the same moment collected on one line ("added 13

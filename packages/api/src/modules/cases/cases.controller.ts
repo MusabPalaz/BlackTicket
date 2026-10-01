@@ -18,6 +18,7 @@ import type { User } from '@prisma/client';
 import { Permission } from '@black-ticket/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.decorators';
 import { CasesService, type ActorContext } from './cases.service';
+import { AttackMapService } from './attack-map.service';
 import {
   AssignCaseDto,
   ChangeStatusDto,
@@ -31,7 +32,10 @@ import {
 @ApiTags('cases')
 @Controller('cases')
 export class CasesController {
-  constructor(private readonly cases: CasesService) {}
+  constructor(
+    private readonly cases: CasesService,
+    private readonly attackMap: AttackMapService,
+  ) {}
 
   private actor(user: User, request: Request): ActorContext {
     return { user, ip: request.ip ?? null, userAgent: request.get('user-agent') ?? null };
@@ -130,6 +134,15 @@ export class CasesController {
   @ApiOperation({ summary: 'Soft-delete a case (administrators only)' })
   async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User, @Req() request: Request) {
     await this.cases.softDelete(id, this.actor(user, request));
+  }
+
+  @Get(':id/attack-map')
+  @RequirePermissions(Permission.CASE_READ)
+  @ApiOperation({
+    summary: 'The campaign a case belongs to, laid out on the kill chain, and what tends to follow',
+  })
+  attackMapOf(@Param('id', ParseUUIDPipe) id: string) {
+    return this.attackMap.build(id);
   }
 
   @Get(':id/timeline')

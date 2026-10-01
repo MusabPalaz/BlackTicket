@@ -11,3 +11,4 @@ export * from './sla-monitoring';
 export * from './case-number';
 export * from './observables';
 export * from './csv';
+export * from './attack';

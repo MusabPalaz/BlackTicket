@@ -7,12 +7,13 @@ import { CatalogController } from '../catalog/catalog.controller';
 import { PlaybooksController } from './playbooks.controller';
 import { PlaybooksService } from './playbooks.service';
 import { TagsService } from './tags.service';
+import { AttackMapService } from './attack-map.service';
 import { ObservablesModule } from '../observables/observables.module';
 
 @Module({
   imports: [ObservablesModule],
   controllers: [CasesController, TasksController, CatalogController, PlaybooksController],
-  providers: [CasesService, TasksService, PlaybooksService, TagsService],
+  providers: [CasesService, TasksService, PlaybooksService, TagsService, AttackMapService],
   exports: [CasesService, PlaybooksService, TagsService],
 })
 export class CasesModule {}

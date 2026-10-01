@@ -403,6 +403,7 @@ POST   /cases/:id/reopen
 DELETE /cases/:id                   (soft, ADMIN)
 GET    /cases/:id/timeline          merged activity stream
 GET    /cases/:id/related           correlation results
+GET    /cases/:id/attack-map        campaign on the kill chain + likely next techniques (history and ATT&CK order)
 POST   /cases/:id/links             manual linking
 DELETE /cases/:id/links/:linkId
 ```

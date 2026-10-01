@@ -24,10 +24,11 @@ import { CaseTasksTab } from './CaseTasksTab';
 import { CaseTimelineTab } from './CaseTimelineTab';
 import { CaseObservablesTab } from './CaseObservablesTab';
 import { CaseRelatedTab } from './CaseRelatedTab';
+import { CaseAttackMapTab } from './CaseAttackMapTab';
 import { useConfirm } from '@/components/ConfirmDialog';
 import type { CaseRecord, PersonRef } from './types';
 
-type Tab = 'overview' | 'tasks' | 'observables' | 'related' | 'timeline';
+type Tab = 'overview' | 'tasks' | 'observables' | 'related' | 'attack' | 'timeline';
 
 export function CaseWorkspacePage() {
   const { id = '' } = useParams();
@@ -284,6 +285,7 @@ export function CaseWorkspacePage() {
             ['tasks', `Tasks (${record.taskCount})`],
             ['observables', `Observables (${record.observableCount})`],
             ['related', `Related cases (${record.relatedCount ?? 0})`],
+            ['attack', 'Attack Map'],
             ['timeline', 'Timeline'],
           ] as const
         ).map(([key, label]) => (
@@ -319,6 +321,7 @@ export function CaseWorkspacePage() {
         <CaseObservablesTab caseId={record.id} readOnly={isClosed} onChanged={refresh} />
       )}
       {tab === 'related' && <CaseRelatedTab caseId={record.id} readOnly={isClosed} />}
+      {tab === 'attack' && <CaseAttackMapTab caseId={record.id} />}
       {tab === 'timeline' && <CaseTimelineTab caseId={record.id} />}
     </div>
   );
