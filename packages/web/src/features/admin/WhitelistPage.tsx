@@ -57,7 +57,7 @@ export function WhitelistPage() {
   return (
     <div className="max-w-6xl space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Correlation whitelist</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Correlation Whitelist</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           These indicators are still recorded on cases — they simply never link cases together.
         </p>
@@ -67,7 +67,7 @@ export function WhitelistPage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="space-y-4">
-          <Card title="Add rule">
+          <Card title="Add Rule">
             <form
               onSubmit={(event: FormEvent) => {
                 event.preventDefault();
@@ -176,7 +176,7 @@ export function WhitelistPage() {
           </Card>
         </div>
 
-        <Card title="What a rule does">
+        <Card title="What A Rule Does">
           <div className="space-y-3 text-sm text-[var(--color-content-muted)]">
             <p>
               Every indicator on a case is matched against every other case — that comparison is

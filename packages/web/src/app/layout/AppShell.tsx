@@ -89,7 +89,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/audit',
-    label: 'Audit trail',
+    label: 'Audit Trail',
     hint: 'Every recorded action',
     icon: <IconAudit className={ICON_CLASS} />,
     permission: Permission.AUDIT_READ,
@@ -97,7 +97,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/settings',
-    label: 'System settings',
+    label: 'System Settings',
     hint: 'Categories and SLA targets',
     icon: <IconSettings className={ICON_CLASS} />,
     permission: Permission.SETTINGS_MANAGE,
@@ -105,7 +105,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/whitelist',
-    label: 'Correlation whitelist',
+    label: 'Correlation Whitelist',
     hint: 'Indicators that never link cases',
     icon: <IconShield className={ICON_CLASS} />,
     permission: Permission.TAXONOMY_MANAGE,
@@ -113,7 +113,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/domain',
-    label: 'Organisation domain',
+    label: 'Organisation Domain',
     hint: 'E-mail domain policy',
     icon: <IconDomain className={ICON_CLASS} />,
     permission: Permission.SETTINGS_MANAGE,
@@ -121,7 +121,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/sso',
-    label: 'Single sign-on',
+    label: 'Single Sign-On',
     hint: 'Directory sign-in and role mapping',
     icon: <IconSso className={ICON_CLASS} />,
     permission: Permission.SETTINGS_MANAGE,
@@ -129,7 +129,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/system',
-    label: 'System health',
+    label: 'System Health',
     hint: 'Database size and housekeeping',
     icon: <IconDatabase className={ICON_CLASS} />,
     permission: Permission.SETTINGS_MANAGE,
@@ -137,7 +137,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/admin/api-keys',
-    label: 'API keys',
+    label: 'API Keys',
     hint: 'Ingest credentials for SIEM integrations',
     icon: <IconKey className={ICON_CLASS} />,
     permission: Permission.API_KEY_MANAGE,
@@ -183,9 +183,9 @@ function writeCollapsed(collapsed: boolean): void {
 
 function titleForPath(pathname: string): string {
   if (pathname === '/') return 'Dashboard';
-  if (pathname.startsWith('/profile')) return 'Your account';
-  if (pathname.startsWith('/change-password')) return 'Change password';
-  if (pathname.startsWith('/cases/new')) return 'New case';
+  if (pathname.startsWith('/profile')) return 'Your Account';
+  if (pathname.startsWith('/change-password')) return 'Change Password';
+  if (pathname.startsWith('/cases/new')) return 'New Case';
   if (/^\/cases\/[^/]+$/.test(pathname)) return 'Case';
   const match = NAV_ITEMS.filter((item) => item.to !== '/')
     .sort((a, b) => b.to.length - a.to.length)
@@ -570,7 +570,7 @@ export function AppShell() {
             className="animate-in relative w-full max-w-sm rounded-[var(--radius-panel)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-overlay)] outline-none"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-medium">Keyboard shortcuts</h2>
+              <h2 className="text-sm font-medium">Keyboard Shortcuts</h2>
               <Button
                 variant="ghost"
                 size="sm"

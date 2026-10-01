@@ -9,7 +9,7 @@ export const BRANDING = {
   shortName: 'BT',
   /** Prefix used in human-readable case numbers: BT-2026-000123 */
   casePrefix: 'BT',
-  tagline: 'SOC case management & IOC correlation',
+  tagline: 'SOC Case Management & IOC Correlation',
 } as const;
 
 export type Branding = typeof BRANDING;

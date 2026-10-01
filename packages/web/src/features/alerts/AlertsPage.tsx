@@ -173,7 +173,7 @@ export function AlertsPage() {
   return (
     <div className="space-y-4 p-6 sm:p-8">
       <PageHeader
-        title="Alert queue"
+        title="Alert Queue"
         description={
           alerts.data ? `${alerts.data.total} alert(s) · refreshes every 30s` : 'Loading…'
         }

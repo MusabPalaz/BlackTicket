@@ -70,7 +70,7 @@ export function UserImportPage() {
           </Link>{' '}
           / Import
         </nav>
-        <h1 className="mt-1 text-xl font-semibold tracking-tight">Import accounts from CSV</h1>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">Import Accounts From CSV</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Columns: <code>username</code> (required), <code>fullname</code>, <code>email</code>,{' '}
           <code>role</code>. Addresses are derived from the organisation domain when the e-mail

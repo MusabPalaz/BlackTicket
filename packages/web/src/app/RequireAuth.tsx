@@ -38,7 +38,7 @@ export function RequireAuth({
   if (permission && !hasPermission(permission)) {
     return (
       <div className="p-8">
-        <h1 className="text-lg font-semibold">Not authorized</h1>
+        <h1 className="text-lg font-semibold">Not Authorized</h1>
         <p className="mt-2 text-sm text-[var(--color-content-muted)]">
           Your role ({user.role}) does not include the permission required for this screen.
         </p>

@@ -156,7 +156,7 @@ export function CaseObservablesTab({ caseId, readOnly, onChanged }: Props) {
       )}
 
       {!readOnly && (
-        <Card title="Add observables">
+        <Card title="Add Observables">
           <div className="space-y-4">
             <div>
               <p className="mb-2 text-xs tracking-wide text-[var(--color-content-muted)] uppercase">

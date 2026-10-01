@@ -272,7 +272,7 @@ export function CaseWorkspacePage() {
       {error && <Alert>{error}</Alert>}
 
       {isClosed && record.summary && (
-        <Card title={`Closing summary — ${record.resolution?.replace('_', ' ')}`}>
+        <Card title={`Closing Summary — ${record.resolution?.replace('_', ' ')}`}>
           <p className="text-sm whitespace-pre-wrap">{record.summary}</p>
           <p className="mt-3 text-xs text-[var(--color-content-muted)]">
             Closed {formatDateTime(record.closedAt)}

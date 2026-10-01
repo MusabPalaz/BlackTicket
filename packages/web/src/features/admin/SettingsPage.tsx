@@ -80,7 +80,7 @@ export function SettingsPage() {
   return (
     <div className="max-w-6xl space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">System settings</h1>
+        <h1 className="text-xl font-semibold tracking-tight">System Settings</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Case categories and SLA targets. The organisation domain, correlation whitelist and API
           keys have their own screens.
@@ -98,7 +98,7 @@ export function SettingsPage() {
            * work to SLA gets a notification per overdue case per breach otherwise,
            * and the bell stops meaning anything.
            */}
-          <Card title="SLA monitoring">
+          <Card title="SLA Monitoring">
             <p className="mb-3 text-sm text-[var(--color-content-muted)]">
               The sweep runs every minute, marks cases that have missed their target and tells the
               people responsible.
@@ -173,7 +173,7 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="SLA targets">
+          <Card title="SLA Targets">
             <table className="w-full text-left text-sm">
               <thead className="text-xs text-[var(--color-content-muted)] uppercase">
                 <tr>
@@ -259,7 +259,7 @@ export function SettingsPage() {
             </table>
           </Card>
 
-          <Card title="Case categories">
+          <Card title="Case Categories">
             <form
               onSubmit={(event: FormEvent) => {
                 event.preventDefault();
@@ -352,7 +352,7 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-4">
-          <Card title="How SLA targets work">
+          <Card title="How SLA Targets Work">
             <div className="space-y-3 text-sm text-[var(--color-content-muted)]">
               <p>
                 Both clocks start when the incident happened, not when the case was opened. A case
@@ -377,7 +377,7 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="How categories work">
+          <Card title="How Categories Work">
             <div className="space-y-3 text-sm text-[var(--color-content-muted)]">
               <p>
                 The <span className="text-[var(--color-content)]">slug</span> is the stable

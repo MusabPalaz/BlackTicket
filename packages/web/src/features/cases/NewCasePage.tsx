@@ -69,7 +69,7 @@ export function NewCasePage() {
   return (
     <div className="max-w-3xl space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">New case</h1>
+        <h1 className="text-xl font-semibold tracking-tight">New Case</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Only a title is required; everything else can be filled in while you work.
         </p>

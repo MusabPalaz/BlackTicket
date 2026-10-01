@@ -127,7 +127,7 @@ function PolicyEditor({ current }: { current: AuthPolicyView }) {
   return (
     <div className="max-w-6xl space-y-5 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Single sign-on</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Single Sign-On</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Let people sign in with the organisation directory instead of a local password.
         </p>
@@ -141,7 +141,7 @@ function PolicyEditor({ current }: { current: AuthPolicyView }) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="space-y-5">
           <div className="grid gap-5 lg:grid-cols-2">
-            <Card title="Current policy">
+            <Card title="Current Policy">
               <dl className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <dt className="text-[var(--color-content-muted)]">Sign-in</dt>
@@ -198,7 +198,7 @@ function PolicyEditor({ current }: { current: AuthPolicyView }) {
             </Alert>
           )}
 
-          <Card title="Identity provider">
+          <Card title="Identity Provider">
             <form
               onSubmit={(event: FormEvent) => {
                 event.preventDefault();
@@ -281,7 +281,7 @@ function PolicyEditor({ current }: { current: AuthPolicyView }) {
           </Card>
 
           <Card
-            title="Role mapping"
+            title="Role Mapping"
             description="Evaluated in order; the first directory group someone belongs to wins."
           >
             <div className="space-y-3">
@@ -374,7 +374,7 @@ function PolicyEditor({ current }: { current: AuthPolicyView }) {
             </div>
           </Card>
 
-          <Card title={ssoOn ? 'Turn single sign-on off' : 'Turn single sign-on on'}>
+          <Card title={ssoOn ? 'Turn Single Sign-On Off' : 'Turn Single Sign-On On'}>
             <div className="space-y-3">
               <p className="text-sm text-[var(--color-content-muted)]">
                 {ssoOn

@@ -162,7 +162,7 @@ export function SystemPage() {
   return (
     <div className="max-w-4xl space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">System health</h1>
+        <h1 className="text-xl font-semibold tracking-tight">System Health</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           What the database is holding, and what can safely be removed from it.
         </p>
@@ -216,7 +216,7 @@ export function SystemPage() {
         )}
       </Card>
 
-      <Card title="Largest tables" description="Row counts are PostgreSQL's live estimates.">
+      <Card title="Largest Tables" description="Row counts are PostgreSQL's live estimates.">
         {health.data && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -243,7 +243,7 @@ export function SystemPage() {
         )}
       </Card>
 
-      <Card title="Audit trail">
+      <Card title="Audit Trail">
         {health.data && (
           <>
             <dl className="grid gap-4 sm:grid-cols-3">
@@ -398,7 +398,7 @@ export function SystemPage() {
        * browser, which is the case this guard exists for.
        */}
       <Card
-        title="Reset operational data"
+        title="Reset Operational Data"
         description="Removes every case, alert and indicator. Accounts and configuration stay."
         className="border-[var(--color-severity-critical)]/40"
       >

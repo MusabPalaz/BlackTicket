@@ -104,7 +104,7 @@ with a local password once SSO is on (`mayUseLocalPassword`, see
 `packages/shared/src/auth-policy.ts`); skip it at installation and there is no
 way in when the identity provider fails.
 
-**6. Lock the organisation domain.** In the interface, on the `Organisation domain`
+**6. Lock the organisation domain.** In the interface, on the `Organisation Domain`
 screen.
 
 ---

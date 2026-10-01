@@ -57,7 +57,7 @@ export function SsoCallbackPage() {
 
   return (
     <AuthLayout
-      title={error ? 'Sign-in failed' : 'Signing you in'}
+      title={error ? 'Sign-In Failed' : 'Signing You In'}
       description={
         error ? 'The identity provider answered, but the session could not be created.' : undefined
       }

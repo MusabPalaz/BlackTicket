@@ -201,10 +201,10 @@ Shows two kinds of link:
 
 - **Automatic** — cases that share an indicator. The system finds them and tells you
   which indicator they have in common.
-- **Manual** — you link them with `Link another case` and write a **reason**.
+- **Manual** — you link them with `Link Another Case` and write a **reason**.
 
 If a shared indicator is correlation noise (such as the organisation's own egress
-IP), a SOC lead can add it to the `Correlation whitelist`; that indicator will not
+IP), a SOC lead can add it to the `Correlation Whitelist`; that indicator will not
 link cases again.
 
 ### `Timeline`

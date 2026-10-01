@@ -87,7 +87,7 @@ export function CaseRelatedTab({ caseId, readOnly }: { caseId: string; readOnly:
       </div>
 
       {linking && (
-        <Card title="Link another case">
+        <Card title="Link Another Case">
           <div className="space-y-4">
             <Field label="Find the case" hint="Search by title or case number">
               <Input value={search} onChange={(event) => setSearch(event.target.value)} autoFocus />

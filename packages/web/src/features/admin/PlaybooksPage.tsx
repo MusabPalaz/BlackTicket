@@ -118,7 +118,7 @@ export function PlaybooksPage() {
       {notice && <Alert tone="success">{notice}</Alert>}
 
       {draft && (
-        <Card title={draft.id ? `Edit “${draft.name}”` : 'New playbook'}>
+        <Card title={draft.id ? `Edit “${draft.name}”` : 'New Playbook'}>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Name">

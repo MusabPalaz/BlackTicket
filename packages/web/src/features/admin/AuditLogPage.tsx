@@ -91,7 +91,7 @@ export function AuditLogPage() {
   return (
     <div className="space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Audit trail</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Audit Trail</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Append-only. The database itself rejects changes and deletions, so this is a record, not a
           log that can be tidied up.
@@ -168,7 +168,7 @@ export function AuditLogPage() {
       )}
 
       {!entries.isError && (
-        <Card title={`${entries.data?.total ?? 0} entr(ies)`}>
+        <Card title={`${entries.data?.total ?? 0} Entr(ies)`}>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="text-xs text-[var(--color-content-muted)] uppercase">

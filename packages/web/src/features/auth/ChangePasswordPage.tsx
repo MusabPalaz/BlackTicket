@@ -46,7 +46,7 @@ export function ChangePasswordPage() {
 
   return (
     <AuthLayout
-      title="Change password"
+      title="Change Password"
       description={
         forced
           ? 'This account still uses a temporary password. Choose a new one to continue.'

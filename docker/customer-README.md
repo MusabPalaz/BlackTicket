@@ -150,7 +150,7 @@ You can now sign in at `https://PUBLIC_HOST`.
 
 ### 6. Lock the organisation domain
 
-In the interface, open **Organisation domain**, enter your organisation's e-mail
+In the interface, open **Organisation Domain**, enter your organisation's e-mail
 domain and lock it. Every account created after the lock must be in that domain.
 
 ---

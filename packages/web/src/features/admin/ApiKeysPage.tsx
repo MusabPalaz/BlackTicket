@@ -66,7 +66,7 @@ export function ApiKeysPage() {
   return (
     <div className="max-w-3xl space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Ingest API keys</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Ingest API Keys</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Used by SIEM and EDR integrations to submit alerts.
         </p>
@@ -91,7 +91,7 @@ export function ApiKeysPage() {
         </Alert>
       )}
 
-      <Card title="Create key">
+      <Card title="Create Key">
         <form
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
@@ -139,7 +139,7 @@ export function ApiKeysPage() {
         </form>
       </Card>
 
-      <Card title="What a key can do">
+      <Card title="What A Key Can Do">
         <div className="space-y-3 text-sm text-[var(--color-content-muted)]">
           <p>
             A key's <span className="text-[var(--color-content)]">purpose</span> is fixed when you
@@ -169,7 +169,7 @@ export function ApiKeysPage() {
         </div>
       </Card>
 
-      <Card title="How to send an alert">
+      <Card title="How To Send An Alert">
         <pre className="overflow-x-auto rounded border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3 text-xs">
           {`curl -X POST http://<host>:3000/api/v1/ingest/alerts \\
   -H "X-Api-Key: <key>" -H "Content-Type: application/json" \\

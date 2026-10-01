@@ -88,7 +88,7 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      title={needsTotp ? 'Two-factor verification' : 'Sign in'}
+      title={needsTotp ? 'Two-Factor Verification' : 'Sign In'}
       description={
         needsTotp
           ? 'Your password was accepted. One more step.'

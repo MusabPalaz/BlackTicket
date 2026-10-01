@@ -17,7 +17,7 @@ function Term({ children }: { children: string }) {
 export function SsoDocsCards() {
   return (
     <>
-      <Card title="How single sign-on works">
+      <Card title="How Single Sign-On Works">
         <div className={PROSE}>
           <p>
             Single sign-on is a feature you switch on, not a mode this product ships in. While it is
@@ -38,7 +38,7 @@ export function SsoDocsCards() {
         </div>
       </Card>
 
-      <Card title="The break-glass account">
+      <Card title="The Break-Glass Account">
         <div className={PROSE}>
           <p>
             With single sign-on on, only the recovery account can still sign in with a local
@@ -56,7 +56,7 @@ export function SsoDocsCards() {
         </div>
       </Card>
 
-      <Card title="How people get accounts">
+      <Card title="How People Get Accounts">
         <div className={PROSE}>
           <p>
             An account appears the first time someone signs in successfully — you do not create them
@@ -64,21 +64,21 @@ export function SsoDocsCards() {
             sign-in afterwards.
           </p>
           <p>
-            Their role comes from <Term>Role mapping</Term> below: the first directory group they
+            Their role comes from <Term>Role Mapping</Term> below: the first directory group they
             belong to wins. Somebody in none of the mapped groups gets whatever{' '}
             <Term>Unmapped users</Term> says — and the safe default there is to refuse the sign-in,
             because a group being renamed should not quietly hand out access.
           </p>
           <p>
             The organisation domains still apply. A tenant that serves several mail domains needs
-            each of them listed under <Term>Additional domains</Term> on the Organisation domain
+            each of them listed under <Term>Additional Domains</Term> on the Organisation domain
             screen; someone the directory vouches for whose address sits outside all of them is
             refused, and the reason is written to the audit trail.
           </p>
         </div>
       </Card>
 
-      <Card title="What the directory cannot do">
+      <Card title="What The Directory Cannot Do">
         <div className={PROSE}>
           <p>
             The directory is the source of truth about people, not a licence to overwrite decisions
@@ -97,7 +97,7 @@ export function SsoDocsCards() {
         </div>
       </Card>
 
-      <Card title="Automatic account sync (SCIM)">
+      <Card title="Automatic Account Sync (SCIM)">
         <div className={PROSE}>
           <p>
             Sign-in alone creates accounts but never removes them: someone who leaves simply stops

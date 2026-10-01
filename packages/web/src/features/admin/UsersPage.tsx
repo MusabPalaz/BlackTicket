@@ -277,7 +277,7 @@ export function UsersPage() {
       )}
 
       {creating && (
-        <Card title="Create account">
+        <Card title="Create Account">
           <form
             onSubmit={(event: FormEvent) => {
               event.preventDefault();

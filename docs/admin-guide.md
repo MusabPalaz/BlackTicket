@@ -60,7 +60,7 @@ people who opened and took them; this keeps the history from being orphaned.
 
 ---
 
-## 3. Organisation domain (`Organisation domain`)
+## 3. Organisation domain (`Organisation Domain`)
 
 You enter the organisation's e-mail domain. From the moment it is saved, every
 account — created by hand, imported from CSV, or arriving through SSO or SCIM —
@@ -68,7 +68,7 @@ must be in that domain. Then **lock** it, so the domain cannot be changed throug
 the normal form.
 
 If the organisation uses more than one mail domain (for example several domains
-on the same Entra tenant), add the others under **`Additional domains`**. Every
+on the same Entra tenant), add the others under **`Additional Domains`**. Every
 listed domain is accepted exactly like the primary one, including for SSO, so a
 single tenant-wide SSO configuration covers all of them. Addresses derived from a
 bare username (CSV rows without an e-mail column) always use the primary domain.
@@ -86,7 +86,7 @@ The sender address for outbound mail must also be inside one of these domains.
 
 ---
 
-## 4. Single sign-on (`Single sign-on`)
+## 4. Single sign-on (`Single Sign-On`)
 
 SSO is **a feature you switch on and off**, not a mode of the product. While it is
 off, nothing on this screen has any effect and the system works with local accounts
@@ -99,7 +99,7 @@ as before.
 2. Fill in `Issuer`, `Client id` and `Client secret`, and press **`Save provider`**.
    Saving is not enabling.
 3. Confirm the provider answers with **`Test connection`**.
-4. Map directory groups to roles under `Role mapping`. Order matters: the **first**
+4. Map directory groups to roles under `Role Mapping`. Order matters: the **first**
    group the user belongs to wins.
 5. The `Unmapped users` field says what someone who matches no group gets. The
    default is **to refuse the sign-in** — so that renaming a group never hands out
@@ -119,7 +119,7 @@ Signing in **creates** an account but never **closes** one: someone who leaves s
 stops signing in, and their account stays. SCIM closes that gap.
 
 - Point your identity provider at `<server>/api/v1/scim/v2`.
-- On the `API keys` screen, create a key with the purpose
+- On the `API Keys` screen, create a key with the purpose
   **`Provision accounts (SCIM directory sync)`** and give it as the secret token.
 - When the directory deactivates someone, the system closes the account and ends
   its sessions.
@@ -132,7 +132,7 @@ last administrator, reopen an account that was closed here.
 
 ---
 
-## 5. API keys (`API keys`)
+## 5. API keys (`API Keys`)
 
 A key's **purpose is fixed when it is created** and cannot be widened later:
 
@@ -159,7 +159,7 @@ allow changing it. The system accepts both forms.
 The application has no mail server of its own. You provide a mailbox in your own
 domain, and everything goes out from that address.
 
-**`Outbound mail settings`** at the bottom of the `Organisation domain` screen:
+**`Outbound Mail Settings`** at the bottom of the `Organisation Domain` screen:
 
 - **SMTP** — for any provider that allows password authentication.
 - **Microsoft Graph** — for Microsoft 365. M365 turns SMTP authentication off by
@@ -175,7 +175,7 @@ breaching its SLA. Nothing about passwords or 2FA is ever sent — with SSO thos
 belong to the identity provider, and the application never even sees them.
 
 Messages are queued, never sent while someone waits. A slow or unreachable mail
-server cannot slow down or fail a case assignment. The `Recent messages` table shows
+server cannot slow down or fail a case assignment. The `Recent Messages` table shows
 what was sent and what happened to it, for 90 days.
 
 > **The `Mail.Send` application permission reaches every mailbox in the tenant.**
@@ -184,7 +184,7 @@ what was sent and what happened to it, for 90 days.
 
 ---
 
-## 7. System settings (`System settings`)
+## 7. System settings (`System Settings`)
 
 ### Categories
 The `slug` is the permanent identifier (lower case, hyphenated) and every case
@@ -220,7 +220,7 @@ task itself, not the template.
 
 ---
 
-## 9. Correlation whitelist (`Correlation whitelist`)
+## 9. Correlation whitelist (`Correlation Whitelist`)
 
 Indicators that should never link cases together: the organisation's own egress IP
 range, `*.microsoft.com` and the like. You can write a CIDR range, a wildcard or an
@@ -232,7 +232,7 @@ this screen matters.
 
 ---
 
-## 10. Audit trail (`Audit trail`)
+## 10. Audit trail (`Audit Trail`)
 
 Who did what, when, and from which IP. Filterable by person, action, entity and date.
 
@@ -242,7 +242,7 @@ users are soft-deleted rather than really deleted.
 
 ---
 
-## 11. System health (`System health`)
+## 11. System health (`System Health`)
 
 Database size, row counts per table, and maintenance operations. The clean-up
 function here **deletes every case, alert and indicator**, and keeps the people and
@@ -262,7 +262,7 @@ each kind of data is kept is a **policy**, not a constant:
 | Read notifications | 90 days | Unread ones are never touched |
 | Outbound e-mail log | 90 days | For answering "did it go out?" |
 | Soft-deleted accounts and cases | **indefinite** | Off; turning it on is your decision |
-| **Audit trail** | **indefinite** | See below |
+| **Audit Trail** | **indefinite** | See below |
 
 The first four are safe to clear: none of them is visible in the interface, none of
 them is evidence.
@@ -326,10 +326,10 @@ The one thing worth repeating here:
 ## 14. Operations checklist
 
 **Weekly**
-- `System health`: is the database growing as expected?
-- `Audit trail`: any unexpected role changes, unlocks, key creation?
-- `Outbound mail` → `Recent messages`: have failed sends piled up?
-- `API keys`: any keys no longer in use? Revoke first, then delete.
+- `System Health`: is the database growing as expected?
+- `Audit Trail`: any unexpected role changes, unlocks, key creation?
+- `Outbound Mail` → `Recent Messages`: have failed sends piled up?
+- `API Keys`: any keys no longer in use? Revoke first, then delete.
 
 **Monthly**
 - A restore rehearsal from backup (into a separate database).

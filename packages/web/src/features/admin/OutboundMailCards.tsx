@@ -53,7 +53,7 @@ export function OutboundMailStatusCard() {
   const current = settings.data;
 
   return (
-    <Card title="Outbound mail">
+    <Card title="Outbound Mail">
       <dl className="space-y-2 text-sm">
         <div className="flex items-center justify-between">
           <dt className="text-[var(--color-content-muted)]">Sending</dt>
@@ -108,7 +108,7 @@ export function OutboundMailSettingsCard() {
 
   if (settings.isLoading || !settings.data) {
     return (
-      <Card title="Outbound mail settings">
+      <Card title="Outbound Mail Settings">
         <p className="text-sm text-[var(--color-content-muted)]">Loading…</p>
       </Card>
     );
@@ -208,7 +208,7 @@ function MailEditor({ current, onSaved }: { current: MailSettingsView; onSaved: 
       {error && <Alert>{error}</Alert>}
 
       <Card
-        title="Outbound mail settings"
+        title="Outbound Mail Settings"
         description="A mailbox on your own domain. Nothing is sent until you switch sending on."
       >
         <form
@@ -385,7 +385,7 @@ function MailEditor({ current, onSaved }: { current: MailSettingsView; onSaved: 
         </form>
       </Card>
 
-      <Card title={current.enabled ? 'Turn sending off' : 'Turn sending on'}>
+      <Card title={current.enabled ? 'Turn Sending Off' : 'Turn Sending On'}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="min-w-0 flex-1 text-sm text-[var(--color-content-muted)]">
             {current.enabled
@@ -418,7 +418,7 @@ function MailEditor({ current, onSaved }: { current: MailSettingsView; onSaved: 
 export function OutboundMailDocsCard() {
   const prose = 'space-y-3 text-sm text-[var(--color-content-muted)]';
   return (
-    <Card title="How outbound mail works">
+    <Card title="How Outbound Mail Works">
       <div className={prose}>
         <p>
           Black Ticket has no mail server of its own. You give it a mailbox on your own domain and
@@ -467,7 +467,7 @@ function MailLogCard() {
   const items = log.data?.items ?? [];
 
   return (
-    <Card title="Recent messages" description="Kept for 90 days, then pruned.">
+    <Card title="Recent Messages" description="Kept for 90 days, then pruned.">
       {items.length === 0 ? (
         <p className="text-sm text-[var(--color-content-muted)]">Nothing sent yet.</p>
       ) : (

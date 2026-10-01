@@ -47,7 +47,7 @@ npm run dev
 `.env`). The password is temporary: it must be changed at first sign-in, and no
 other endpoint can be used until it is.
 
-Then enter and lock the organisation's e-mail domain on the **Organisation domain**
+Then enter and lock the organisation's e-mail domain on the **Organisation Domain**
 screen. Once it is saved, every new account — CSV imports included — must be in
 that domain; locking it keeps the domain from being changed without a password. An organisation with several mail domains (one Entra tenant, say) adds
 the rest under **Additional domains**; SSO and SCIM accept all of them.

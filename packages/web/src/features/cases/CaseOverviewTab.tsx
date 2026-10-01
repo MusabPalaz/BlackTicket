@@ -73,7 +73,7 @@ export function CaseOverviewTab({ record, canEdit, canAssignAnyone, people, onAs
             )}
           </Card>
         ) : (
-          <Card title="Edit case">
+          <Card title="Edit Case">
             <div className="space-y-4">
               <Field label="Title">
                 <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />

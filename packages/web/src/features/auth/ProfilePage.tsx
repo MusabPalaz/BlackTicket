@@ -76,7 +76,7 @@ export function ProfilePage() {
   return (
     <div className="max-w-2xl space-y-4 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Your account</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Your Account</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           {user?.fullName} · {user?.username} · {user?.role}
         </p>
@@ -141,7 +141,7 @@ export function ProfilePage() {
         </Alert>
       )}
 
-      <Card title="Two-factor authentication" id="two-factor">
+      <Card title="Two-Factor Authentication" id="two-factor">
         {user?.totpEnabled ? (
           <div className="space-y-3">
             <p className="text-sm text-[var(--color-content-muted)]">

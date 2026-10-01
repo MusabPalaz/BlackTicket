@@ -120,7 +120,7 @@ export function IdentityDomainPage() {
   return (
     <div className="max-w-6xl space-y-5 p-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Organisation domain</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Organisation Domain</h1>
         <p className="mt-1 text-sm text-[var(--color-content-muted)]">
           Every account address must belong to one of these domains. Lock them so the list cannot be
           changed without your password.
@@ -137,7 +137,7 @@ export function IdentityDomainPage() {
           {/* The mail sender has to live inside this domain, so its status
               belongs next to the policy that decides what the domain is. */}
           <div className="grid gap-5 lg:grid-cols-2">
-            <Card title="Current policy">
+            <Card title="Current Policy">
               <dl className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <dt className="text-[var(--color-content-muted)]">Primary domain</dt>
@@ -178,7 +178,7 @@ export function IdentityDomainPage() {
           </div>
 
           {!current.locked && (
-            <Card title={current.domain ? 'Change primary domain' : 'Set domain'}>
+            <Card title={current.domain ? 'Change Primary Domain' : 'Set Domain'}>
               <form
                 onSubmit={(event: FormEvent) => {
                   event.preventDefault();
@@ -212,7 +212,7 @@ export function IdentityDomainPage() {
 
           {current.domain && (
             <Card
-              title="Additional domains"
+              title="Additional Domains"
               description="Other mail domains of the same organisation, for example several domains in one Entra tenant."
             >
               <p className="mb-4 text-sm text-[var(--color-content-muted)]">
@@ -301,7 +301,7 @@ export function IdentityDomainPage() {
           )}
 
           {!current.locked && current.domain && (
-            <Card title="Lock domain">
+            <Card title="Lock Domain">
               <p className="mb-4 text-sm text-[var(--color-content-muted)]">
                 New accounts already have to use{' '}
                 <span className="font-mono">{formatDomainList(allDomains)}</span>. Locking stops
@@ -351,7 +351,7 @@ export function IdentityDomainPage() {
           )}
 
           {current.locked && (
-            <Card title="Unlock domain">
+            <Card title="Unlock Domain">
               <p className="mb-4 text-sm text-[var(--color-content-muted)]">
                 Unlocking lets the domains be changed again. It asks for your password and records a
                 reason in the audit log.
