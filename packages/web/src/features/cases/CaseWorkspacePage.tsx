@@ -318,7 +318,12 @@ export function CaseWorkspacePage() {
         <CaseTasksTab caseId={record.id} readOnly={isClosed} people={people.data?.items ?? []} onChanged={refresh} />
       )}
       {tab === 'observables' && (
-        <CaseObservablesTab caseId={record.id} readOnly={isClosed} onChanged={refresh} />
+        <CaseObservablesTab
+          caseId={record.id}
+          readOnly={isClosed}
+          onChanged={refresh}
+          pap={record.pap}
+        />
       )}
       {tab === 'related' && <CaseRelatedTab caseId={record.id} readOnly={isClosed} />}
       {tab === 'attack' && <CaseAttackMapTab caseId={record.id} />}

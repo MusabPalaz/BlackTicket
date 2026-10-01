@@ -12,9 +12,12 @@ import {
   IsString,
   IsUUID,
   Length,
+  IsObject,
+  Matches,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Role, Severity } from '@black-ticket/shared';
 
@@ -304,6 +307,45 @@ export class ResetDataDto {
   @IsString()
   @Length(6, 10)
   totpCode!: string;
+}
+
+export class LookupProviderDto {
+  @ApiProperty({ example: 'virustotal' })
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9-]{0,39}$/)
+  id!: string;
+
+  @ApiProperty({ example: 'VirusTotal' })
+  @IsString()
+  @Length(1, 40)
+  name!: string;
+
+  @ApiProperty()
+  @IsBoolean()
+  enabled!: boolean;
+
+  @ApiPropertyOptional({
+    description: 'An in-house tool (CMDB, IPAM, SIEM search) rather than an outside service',
+  })
+  @IsOptional()
+  @IsBoolean()
+  internal?: boolean;
+
+  @ApiProperty({
+    example: { IP: 'https://www.virustotal.com/gui/ip-address/{value}' },
+    description: 'Address per indicator type; {value} is replaced by the URL-encoded indicator',
+  })
+  @IsObject()
+  templates!: Record<string, string>;
+}
+
+export class ReplaceLookupProvidersDto {
+  @ApiProperty({ type: [LookupProviderDto] })
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => LookupProviderDto)
+  providers!: LookupProviderDto[];
 }
 
 /** Both switches are optional so either can be flipped on its own. */

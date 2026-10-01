@@ -1,13 +1,24 @@
-import { Body, Controller, Get, Patch, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Patch, Post, Put, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { User } from '@prisma/client';
-import { AuditAction, Permission } from '@black-ticket/shared';
+import {
+  AuditAction,
+  DEFAULT_LOOKUP_PROVIDERS,
+  Permission,
+  validateLookupProviders,
+  type LookupProvider,
+} from '@black-ticket/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
-import { UpdateSlaMonitoringDto, UpdateSlaPolicyDto, UpsertCategoryDto } from './dto/admin.dto';
+import {
+  ReplaceLookupProvidersDto,
+  UpdateSlaMonitoringDto,
+  UpdateSlaPolicyDto,
+  UpsertCategoryDto,
+} from './dto/admin.dto';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -136,6 +147,61 @@ export class SettingsController {
     });
 
     return policy;
+  }
+
+  // ------------------------------------------------------- indicator lookups
+
+  @Get('lookup-providers')
+  @RequirePermissions(Permission.SETTINGS_MANAGE)
+  @ApiOperation({
+    summary: 'Third-party lookup services offered on indicators, and their addresses',
+  })
+  async lookupProviders() {
+    return { ...(await this.settings.getLookupSettings()), defaults: DEFAULT_LOOKUP_PROVIDERS };
+  }
+
+  @Put('lookup-providers')
+  @RequirePermissions(Permission.SETTINGS_MANAGE)
+  @ApiOperation({ summary: 'Replace the list of lookup services' })
+  async replaceLookupProviders(
+    @Body() dto: ReplaceLookupProvidersDto,
+    @CurrentUser() user: User,
+    @Req() request: Request,
+  ) {
+    // Empty templates are dropped rather than stored, so "not offered" has
+    // one spelling.
+    const providers: LookupProvider[] = dto.providers.map((provider) => ({
+      id: provider.id,
+      name: provider.name.trim(),
+      enabled: provider.enabled,
+      internal: provider.internal === true,
+      templates: Object.fromEntries(
+        Object.entries(provider.templates)
+          .filter(([, template]) => typeof template === 'string' && template.trim() !== '')
+          .map(([type, template]) => [type, template.trim()]),
+      ),
+    }));
+
+    const problems = validateLookupProviders(providers);
+    if (problems.length > 0) throw new BadRequestException(problems.join(' '));
+
+    const before = await this.settings.getLookupSettings();
+    const after = await this.settings.setLookupSettings({
+      providers,
+      updatedAt: new Date().toISOString(),
+      updatedById: user.id,
+    });
+
+    await this.audit.record({
+      ...this.context(user, request),
+      action: AuditAction.SETTINGS_CHANGED,
+      entityType: 'LookupProviders',
+      entityId: 'lookup.providers',
+      before: { providers: before.providers },
+      after: { providers: after.providers },
+    });
+
+    return { ...after, defaults: DEFAULT_LOOKUP_PROVIDERS };
   }
 
   // -------------------------------------------------------- SLA monitoring

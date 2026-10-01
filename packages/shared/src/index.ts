@@ -12,3 +12,4 @@ export * from './case-number';
 export * from './observables';
 export * from './csv';
 export * from './attack';
+export * from './lookups';

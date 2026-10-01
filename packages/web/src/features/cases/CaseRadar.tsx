@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { CaseResolution, ExtractedObservable, Severity } from '@black-ticket/shared';
+import {
+  lookupBlockedReason,
+  type CaseResolution,
+  type ExtractedObservable,
+  type Severity,
+  type Tlp,
+} from '@black-ticket/shared';
 import { api } from '@/lib/api';
 import { Badge, Card, cx } from '@/components/ui';
 import { ResolutionChip, SeverityChip, formatDateTime } from '@/components/case-bits';
+import { IndicatorLookup } from '@/components/IndicatorLookup';
 
 interface RadarCase {
   caseId: string;
@@ -109,10 +116,13 @@ export function CaseRadar({
   indicators,
   excluded,
   onToggle,
+  pap,
 }: {
   indicators: ExtractedObservable[];
   excluded: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** The PAP chosen on the form; it already governs the case being written. */
+  pap: Tlp;
 }) {
   // Looked up once typing settles, not on every keystroke.
   const lookupKey = indicators.map(indicatorKey).join('\n');
@@ -225,13 +235,21 @@ export function CaseRadar({
                         <span className="w-20 shrink-0 text-xs text-[var(--color-content-faint)]">
                           {indicator.type}
                         </span>
-                        <span
-                          className={cx(
-                            'min-w-0 font-mono text-sm break-all',
-                            !checked && 'text-[var(--color-content-faint)] line-through',
-                          )}
-                        >
-                          {indicator.normalized}
+                        <span className="min-w-0">
+                          <IndicatorLookup
+                            type={indicator.type}
+                            value={indicator.normalized}
+                            blockedReason={lookupBlockedReason({ pap })}
+                          >
+                            <span
+                              className={cx(
+                                'font-mono text-sm break-all',
+                                !checked && 'text-[var(--color-content-faint)] line-through',
+                              )}
+                            >
+                              {indicator.normalized}
+                            </span>
+                          </IndicatorLookup>
                         </span>
                       </span>
                     </span>

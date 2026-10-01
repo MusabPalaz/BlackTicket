@@ -7,6 +7,7 @@ import {
   type ObservableType,
   Tlp,
   formatCaseNumber,
+  lookupBlockedReason,
   normalizeObservable,
   refang,
 } from '@black-ticket/shared';
@@ -470,6 +471,25 @@ export class ObservablesService {
       this.prisma.observable.count({ where }),
     ]);
 
+    // Checked over every case an indicator is on, not only the 25 listed: one
+    // PAP:RED case anywhere is enough to keep it away from outside services.
+    const restricted = await this.prisma.caseObservable.findMany({
+      where: {
+        observableId: { in: rows.map((row) => row.id) },
+        case: { deletedAt: null },
+        OR: [{ tlp: Tlp.RED }, { case: { pap: Tlp.RED } }],
+      },
+      select: { observableId: true, tlp: true, case: { select: { pap: true } } },
+    });
+    const blockedReason = (observableId: string) => {
+      for (const entry of restricted) {
+        if (entry.observableId !== observableId) continue;
+        const reason = lookupBlockedReason({ pap: entry.case.pap as Tlp, tlp: entry.tlp as Tlp });
+        if (reason) return reason;
+      }
+      return null;
+    };
+
     return {
       total,
       page,
@@ -485,6 +505,7 @@ export class ObservablesService {
         firstSeenAt: row.firstSeenAt.toISOString(),
         lastSeenAt: row.lastSeenAt.toISOString(),
         isIoc: row.cases.some((entry) => entry.isIoc),
+        lookupBlockedReason: blockedReason(row.id),
         cases: row.cases.map((entry) => ({
           id: entry.case.id,
           reference: formatCaseNumber(entry.case.number, entry.case.createdAt),

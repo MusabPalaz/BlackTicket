@@ -6,6 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { IndicatorLookup } from '@/components/IndicatorLookup';
 import {
   Badge,
   Button,
@@ -451,7 +452,11 @@ export function AlertsPage() {
                             <span className="w-28 shrink-0 text-xs text-[var(--color-content-faint)]">
                               {observable.type}
                             </span>
-                            <span className="font-mono text-xs break-all">{observable.value}</span>
+                            <IndicatorLookup type={observable.type} value={observable.value}>
+                              <span className="font-mono text-xs break-all">
+                                {observable.value}
+                              </span>
+                            </IndicatorLookup>
                           </li>
                         ))}
                       </ul>

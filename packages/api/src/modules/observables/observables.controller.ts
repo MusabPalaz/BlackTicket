@@ -15,11 +15,12 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { User } from '@prisma/client';
-import { Permission } from '@black-ticket/shared';
+import { Permission, organisationDomains } from '@black-ticket/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.decorators';
 import type { ActorContext } from '../cases/cases.service';
 import { ObservablesService } from './observables.service';
 import { CorrelationService } from './correlation.service';
+import { SettingsService } from '../settings/settings.service';
 import {
   AddObservablesDto,
   CreateCaseLinkDto,
@@ -38,6 +39,7 @@ export class ObservablesController {
   constructor(
     private readonly observables: ObservablesService,
     private readonly correlation: CorrelationService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get('cases/:caseId/observables')
@@ -90,6 +92,25 @@ export class ObservablesController {
   @ApiOperation({ summary: 'Global indicator search across every case' })
   search(@Query() query: SearchObservablesDto) {
     return this.observables.search(query);
+  }
+
+  @Get('lookup-providers')
+  @RequirePermissions(Permission.CASE_READ)
+  @ApiOperation({
+    summary:
+      'The lookup services offered on indicators (enabled ones only), and the domains that count as internal',
+  })
+  async lookupProviders() {
+    const [settings, identity] = await Promise.all([
+      this.settings.getLookupSettings(),
+      this.settings.getIdentityDomainPolicy(),
+    ]);
+    return {
+      items: settings.providers.filter((provider) => provider.enabled),
+      // The organisation's own domains are internal: its hosts and mailboxes
+      // are not looked up with outside services.
+      organisationDomains: organisationDomains(identity),
+    };
   }
 
   // A read, sent as POST only because the indicators travel in the body.

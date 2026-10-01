@@ -112,6 +112,14 @@ const NAV_ITEMS: NavItem[] = [
     section: 'admin',
   },
   {
+    to: '/admin/lookups',
+    label: 'IOC Lookups',
+    hint: 'Outside services for checking indicators',
+    icon: <IconSearch className={ICON_CLASS} />,
+    permission: Permission.SETTINGS_MANAGE,
+    section: 'admin',
+  },
+  {
     to: '/admin/domain',
     label: 'Organisation Domain',
     hint: 'E-mail domain policy',

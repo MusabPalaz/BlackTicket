@@ -15,6 +15,7 @@ import { NewCasePage } from '@/features/cases/NewCasePage';
 import { CaseWorkspacePage } from '@/features/cases/CaseWorkspacePage';
 import { ObservablesPage } from '@/features/observables/ObservablesPage';
 import { WhitelistPage } from '@/features/admin/WhitelistPage';
+import { LookupProvidersPage } from '@/features/admin/LookupProvidersPage';
 import { ApiKeysPage } from '@/features/admin/ApiKeysPage';
 import { UserImportPage } from '@/features/admin/UserImportPage';
 import { AuditLogPage } from '@/features/admin/AuditLogPage';
@@ -151,6 +152,14 @@ export function App() {
           element={
             <RequireAuth permission={Permission.TAXONOMY_MANAGE}>
               <WhitelistPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/lookups"
+          element={
+            <RequireAuth permission={Permission.SETTINGS_MANAGE}>
+              <LookupProvidersPage />
             </RequireAuth>
           }
         />

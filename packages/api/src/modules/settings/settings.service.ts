@@ -3,11 +3,14 @@ import {
   AUTH_POLICY_SETTING_KEY,
   DEFAULT_AUTH_POLICY,
   DEFAULT_IDENTITY_DOMAIN_POLICY,
+  DEFAULT_LOOKUP_SETTINGS,
   DEFAULT_SLA_MONITORING_POLICY,
   IDENTITY_DOMAIN_SETTING_KEY,
+  LOOKUP_SETTING_KEY,
   SLA_MONITORING_SETTING_KEY,
   type AuthPolicy,
   type IdentityDomainPolicy,
+  type LookupSettings,
   type SlaMonitoringPolicy,
 } from '@black-ticket/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -85,5 +88,14 @@ export class SettingsService {
 
   setSlaMonitoringPolicy(policy: SlaMonitoringPolicy): Promise<SlaMonitoringPolicy> {
     return this.set(SLA_MONITORING_SETTING_KEY, policy);
+  }
+
+  /** Absent until an administrator saves a list, so the shipped defaults apply. */
+  getLookupSettings(): Promise<LookupSettings> {
+    return this.get<LookupSettings>(LOOKUP_SETTING_KEY, DEFAULT_LOOKUP_SETTINGS);
+  }
+
+  setLookupSettings(settings: LookupSettings): Promise<LookupSettings> {
+    return this.set(LOOKUP_SETTING_KEY, settings);
   }
 }

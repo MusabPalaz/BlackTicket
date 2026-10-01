@@ -5,6 +5,7 @@ import { ObservableType, detectObservableType, refang } from '@black-ticket/shar
 import { api } from '@/lib/api';
 import { Button, Card, ErrorState, Input, cx } from '@/components/ui';
 import { SeverityChip, StatusChip, formatDateTime } from '@/components/case-bits';
+import { IndicatorLookup } from '@/components/IndicatorLookup';
 import type { ObservableSearchRow } from '@/features/cases/types';
 
 interface SearchResult {
@@ -143,7 +144,13 @@ export function ObservablesPage() {
                 <span className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--color-content-muted)]">
                   {row.type}
                 </span>
-                <span className="font-mono text-sm break-all">{row.normalized}</span>
+                <IndicatorLookup
+                  type={row.type}
+                  value={row.normalized}
+                  blockedReason={row.lookupBlockedReason}
+                >
+                  <span className="font-mono text-sm break-all">{row.normalized}</span>
+                </IndicatorLookup>
                 {row.isIoc && (
                   <span className="rounded border border-[var(--color-severity-high)] px-1.5 py-0.5 text-[11px] text-[var(--color-severity-high)]">
                     IOC

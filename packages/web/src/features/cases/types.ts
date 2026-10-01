@@ -177,6 +177,8 @@ export interface RelatedCase {
 
 export interface ObservableSearchRow extends ObservableRef {
   isIoc: boolean;
+  /** Set when any case holding it forbids outside lookups (PAP:RED, TLP:RED). */
+  lookupBlockedReason: string | null;
   cases: {
     id: string;
     reference: string;

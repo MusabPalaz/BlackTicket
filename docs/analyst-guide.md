@@ -263,6 +263,24 @@ fastest way to ask whether an incident has happened to you before.
 The `sightings` view gives an indicator's history: first seen, last seen, number of
 cases.
 
+### Looking an indicator up outside
+
+Next to every indicator there is a small search button; right-clicking the
+indicator opens the same menu. It lists the services an administrator set up —
+VirusTotal, IBM X-Force Exchange, AbuseIPDB and others — and opens the one you pick
+in a new tab. It is on a case's `Observables` tab, on this search screen, in the
+alert queue and in the new-case radar.
+
+Only lookups that make sense are offered. Private addresses (192.168.x.x, 10.x.x.x
+and the like), internal names and the organisation's own domains are never sent to
+outside services, nor are hostnames or usernames, and an address-only service such
+as AbuseIPDB does not appear for a domain. An indicator with nothing to offer has no
+button. In-house tools an administrator added — a CMDB, for example — are marked
+`in-house` and appear for internal indicators too.
+
+A lookup sends the indicator to that service. For a case marked **PAP:RED**, or an
+indicator marked **TLP:RED**, the menu offers no outside service and says why.
+
 ---
 
 ## 8. SLA

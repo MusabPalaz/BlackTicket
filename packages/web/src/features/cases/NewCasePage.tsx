@@ -288,7 +288,12 @@ export function NewCasePage() {
 
         {/* Stays in view while the form scrolls: it answers what is being typed. */}
         <aside className="lg:sticky lg:top-4">
-          <CaseRadar indicators={indicators} excluded={excluded} onToggle={toggleIndicator} />
+          <CaseRadar
+            indicators={indicators}
+            excluded={excluded}
+            onToggle={toggleIndicator}
+            pap={form.pap}
+          />
         </aside>
       </div>
     </div>

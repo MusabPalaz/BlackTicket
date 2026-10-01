@@ -6,10 +6,12 @@ import {
   Tlp,
   detectObservableType,
   extractObservables,
+  lookupBlockedReason,
 } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { Alert, Button, Card, Input, cx } from '@/components/ui';
 import { formatDateTime } from '@/components/case-bits';
+import { IndicatorLookup } from '@/components/IndicatorLookup';
 import { useConfirm } from '@/components/ConfirmDialog';
 import type { AddObservablesResult, CaseObservable } from './types';
 
@@ -20,6 +22,8 @@ interface Props {
   caseId: string;
   readOnly: boolean;
   onChanged: () => void;
+  /** The case's PAP decides whether its indicators may be looked up outside. */
+  pap: Tlp;
 }
 
 interface Draft {
@@ -54,7 +58,7 @@ const EXAMPLE_VALUE: Record<ObservableType, string> = {
   [ObservableType.OTHER]: 'Anything the other types do not cover',
 };
 
-export function CaseObservablesTab({ caseId, readOnly, onChanged }: Props) {
+export function CaseObservablesTab({ caseId, readOnly, onChanged, pap }: Props) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
@@ -311,9 +315,15 @@ export function CaseObservablesTab({ caseId, readOnly, onChanged }: Props) {
                   <tr key={entry.id} className="border-t border-[var(--color-border-subtle)]">
                     <td className="py-2 pr-3 text-xs whitespace-nowrap">{entry.observable.type}</td>
                     <td className="max-w-md py-2 pr-3">
-                      <span className="font-mono text-xs break-all">
-                        {entry.observable.normalized}
-                      </span>
+                      <IndicatorLookup
+                        type={entry.observable.type}
+                        value={entry.observable.normalized}
+                        blockedReason={lookupBlockedReason({ pap, tlp: entry.tlp })}
+                      >
+                        <span className="font-mono text-xs break-all">
+                          {entry.observable.normalized}
+                        </span>
+                      </IndicatorLookup>
                       {entry.observable.value !== entry.observable.normalized && (
                         <span className="ml-2 text-xs text-[var(--color-content-muted)]">
                           (as entered: {entry.observable.value})

@@ -232,7 +232,45 @@ this screen matters.
 
 ---
 
-## 10. Audit trail (`Audit Trail`)
+## 10. IOC lookups (`IOC Lookups`)
+
+The outside services an analyst can check an indicator with — VirusTotal, IBM
+X-Force Exchange, AbuseIPDB, AlienVault OTX, Shodan and urlscan.io out of the box.
+Analysts open them from the small search button next to an indicator, or by
+right-clicking the indicator, on a case's `Observables` tab, the global
+`Observables` search, the alert queue and the new-case radar.
+
+Each service has one address per indicator type, with `{value}` where the
+indicator goes (`https://` only). Untick a service to stop offering it, add your
+own, or restore the defaults.
+
+Only lookups that make sense are offered:
+
+- Outside services take IP addresses, domains, URLs, e-mail addresses and hashes —
+  never hostnames, usernames, file names, registry keys, mutexes or user agents.
+- Internal indicators are never offered to them: private and reserved addresses
+  (10/8, 172.16/12, 192.168/16, loopback, link-local, CGNAT, documentation ranges,
+  their IPv6 equivalents), internal names (`.local`, `.lan`, `.internal`, `.corp`,
+  `.home.arpa`, names without a domain) and the organisation's own domains from
+  `Organisation Domain`. URLs and e-mail addresses are judged by their host.
+- A service is offered only for the types it has an address for, so an
+  address-only service such as AbuseIPDB or Shodan never appears for a domain.
+
+When nothing is left for an indicator, it shows no lookup button at all.
+
+**In-house tools.** Tick `In-house tool` for a service inside your network — a CMDB,
+IPAM or SIEM search. It may use `http://`, can take every indicator type, is offered
+for internal addresses and names, and is not held back by PAP:RED or TLP:RED,
+because nothing leaves the network.
+
+A lookup is a link opened from the analyst's browser: the server needs no internet
+access and holds no API keys for these services. It does send the indicator to the
+service, so for a **PAP:RED** case or a **TLP:RED** indicator the menu offers no
+outside service and says why.
+
+---
+
+## 11. Audit trail (`Audit Trail`)
 
 Who did what, when, and from which IP. Filterable by person, action, entity and date.
 
@@ -242,7 +280,7 @@ users are soft-deleted rather than really deleted.
 
 ---
 
-## 11. System health (`System Health`)
+## 12. System health (`System Health`)
 
 Database size, row counts per table, and maintenance operations. The clean-up
 function here **deletes every case, alert and indicator**, and keeps the people and
@@ -250,7 +288,7 @@ the configuration. It is for clearing an installation of demo data before real u
 
 ---
 
-## 12. Data retention
+## 13. Data retention
 
 The system clears operational leftovers by itself at 4 a.m. every night. How long
 each kind of data is kept is a **policy**, not a constant:
@@ -307,7 +345,7 @@ guess that number on your behalf.
 
 ---
 
-## 13. Backup and restore
+## 14. Backup and restore
 
 The procedure and scripts are in the [README](../README.md#backup-and-restore).
 
@@ -323,7 +361,7 @@ The one thing worth repeating here:
 
 ---
 
-## 14. Operations checklist
+## 15. Operations checklist
 
 **Weekly**
 - `System Health`: is the database growing as expected?

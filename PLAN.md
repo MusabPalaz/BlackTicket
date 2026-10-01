@@ -426,6 +426,7 @@ DELETE /case-observables/:id
 GET    /observables/search          ?q=1.2.3.4 → global search + which cases it appears on
 GET    /observables/:id/sightings
 POST   /observables/radar           { items: [{ type, value }] } → sightings, last verdict, open duplicates (Case Radar)
+GET    /lookup-providers            enabled lookup services and the organisation domains (internal, never looked up outside)
 ```
 
 ### MITRE
@@ -457,6 +458,7 @@ GET/POST/DELETE /admin/api-keys
 GET/PATCH       /admin/settings
 GET/POST/PATCH  /admin/categories
 GET/POST/DELETE /admin/whitelist    correlation whitelist
+GET/PUT         /admin/lookup-providers  outside lookup services and their address templates
 GET    /admin/settings/identity-domain          corporate domain policy
 PUT    /admin/settings/identity-domain          write/change the primary domain (refused while locked)
 POST   /admin/settings/identity-domain/domains          add an additional domain (refused while locked)
