@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { type Severity } from '@black-ticket/shared';
+import { DASHBOARD_RANGE_SPECS, type DashboardRange, type Severity } from '@black-ticket/shared';
 import { api } from '@/lib/api';
 import { EmptyState, Skeleton, cx } from '@/components/ui';
 import { IconInbox } from '@/components/icons';
@@ -148,6 +148,12 @@ function ChartSkeleton({ height = 200 }: { height?: number }) {
   );
 }
 
+/** "last 24 hours", for sentences such as "No alerts in the last 24 hours". */
+function periodPhrase(range: DashboardRange): string {
+  const label = DASHBOARD_RANGE_SPECS[range].label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
 /** Shown under every chart that can be drilled into. */
 function DrillHint({ children }: { children: string }) {
   return <p className="mt-2 text-[11px] text-[var(--color-content-faint)]">{children}</p>;
@@ -158,43 +164,47 @@ function DrillHint({ children }: { children: string }) {
 /** The browser's zone, which is the one the person reading the chart lives in. */
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-/** `+03:00` for a local date, so an ISO bound names the local midnight exactly. */
-function utcOffsetOf(date: Date): string {
-  const minutes = -date.getTimezoneOffset();
-  const sign = minutes >= 0 ? '+' : '-';
-  const absolute = Math.abs(minutes);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
-}
+const pad2 = (value: number) => String(value).padStart(2, '0');
 
 /**
- * One local calendar day as an ISO window. The chart buckets by the viewer's
- * day, so the list it opens has to start and end at the same local midnights
- * — UTC bounds were off by the zone's offset at both ends.
+ * How a point of the trend reads: a day as `10-02`, a six-hour slot as
+ * `10-02 06:00`, anything shorter as `14:00`. In the browser's zone, which is
+ * the one the server bucketed in.
  */
-function localDayWindow(date: string): { from: string; to: string } {
-  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
-  const start = new Date(year, month - 1, day);
-  const next = new Date(year, month - 1, day + 1);
-  return {
-    from: `${date}T00:00:00.000${utcOffsetOf(start)}`,
-    to: new Date(next.getTime() - 1).toISOString(),
-  };
+function pointLabel(iso: string, bucketMinutes: number): string {
+  const date = new Date(iso);
+  const day = `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  const time = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  if (bucketMinutes >= 1440) return day;
+  return bucketMinutes >= 360 ? `${day} ${time}` : time;
 }
 
-function CaseTrend() {
+/** What one column of the trend is, for the hint under it. */
+const POINT_NAME: Record<number, string> = {
+  5: 'a five-minute slot',
+  15: 'a quarter hour',
+  30: 'a half hour',
+  60: 'an hour',
+  360: 'a six-hour slot',
+  1440: 'a day',
+};
+
+function CaseTrend({ range }: { range: DashboardRange }) {
   const navigate = useNavigate();
   const data = useQuery({
-    queryKey: ['metrics', 'case-trend', TIME_ZONE],
+    queryKey: ['metrics', 'case-trend', range, TIME_ZONE],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
-      api.get<{ items: { date: string; opened: number; closed: number }[] }>(
-        `/metrics/case-trend?days=14&tz=${encodeURIComponent(TIME_ZONE)}`,
-      ),
+      api.get<{
+        bucketMinutes: number;
+        items: { start: string; end: string; opened: number; closed: number }[];
+      }>(`/metrics/case-trend?range=${range}&tz=${encodeURIComponent(TIME_ZONE)}`),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
   if (!data.data) return <ChartSkeleton height={220} />;
+
+  const { bucketMinutes } = data.data;
 
   /*
    * Each day gets a faint full-height column behind the areas.
@@ -203,8 +213,19 @@ function CaseTrend() {
    * the pointer was nearest; a real element per day is an honest hit target —
    * it can be hovered, clicked, and reasoned about.
    */
-  const ceiling = Math.max(1, ...data.data.items.map((day) => Math.max(day.opened, day.closed)));
-  const items = data.data.items.map((day) => ({ ...day, column: ceiling }));
+  const ceiling = Math.max(
+    1,
+    ...data.data.items.map((point) => Math.max(point.opened, point.closed)),
+  );
+  const items = data.data.items.map((point) => ({
+    ...point,
+    label: pointLabel(point.start, bucketMinutes),
+    span:
+      bucketMinutes >= 1440
+        ? pointLabel(point.start, bucketMinutes)
+        : `${pointLabel(point.start, bucketMinutes)}–${pointLabel(point.end, 60)}`,
+    column: ceiling,
+  }));
 
   return (
     <>
@@ -215,13 +236,18 @@ function CaseTrend() {
             stroke="var(--color-border-subtle)"
             vertical={false}
           />
-          <XAxis dataKey="date" tickFormatter={(value: string) => value.slice(5)} {...AXIS_PROPS} />
+          <XAxis dataKey="label" minTickGap={12} {...AXIS_PROPS} />
           <YAxis allowDecimals={false} domain={[0, ceiling]} {...AXIS_PROPS} />
-          <Tooltip {...TOOLTIP_STYLE} />
+          <Tooltip
+            {...TOOLTIP_STYLE}
+            labelFormatter={(label, payload) =>
+              (payload?.[0]?.payload as { span?: string } | undefined)?.span ?? String(label)
+            }
+          />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           <Bar
             dataKey="column"
-            name="Cases opened that day"
+            name="Cases opened in that period"
             fill="var(--color-content)"
             fillOpacity={0.05}
             isAnimationActive={false}
@@ -231,13 +257,15 @@ function CaseTrend() {
             tooltipType="none"
             // The trend counts when cases were opened, so the drill-down has to
             // filter on the same field or the row count will not match.
-            onClick={onBarClick<{ date: string }>((row) => {
-              if (row.date) {
-                const window = localDayWindow(row.date);
+            // The point's own bounds, as the server counted them; `to` is the
+            // last instant inside it, the way the list takes a window.
+            onClick={onBarClick<{ start: string; end: string }>((row) => {
+              if (row.start && row.end) {
                 const query = new URLSearchParams({
                   status: 'all',
                   dateField: 'createdAt',
-                  ...window,
+                  from: row.start,
+                  to: new Date(new Date(row.end).getTime() - 1).toISOString(),
                 });
                 navigate(`/cases?${query.toString()}`);
               }
@@ -263,7 +291,9 @@ function CaseTrend() {
           />
         </ComposedChart>
       </ResponsiveContainer>
-      <DrillHint>Click a day to list the cases opened on it.</DrillHint>
+      <DrillHint>
+        {`Click ${POINT_NAME[bucketMinutes] ?? 'a column'} to list the cases opened in it.`}
+      </DrillHint>
     </>
   );
 }
@@ -324,9 +354,9 @@ function OpenBySeverity() {
   );
 }
 
-function SlaCompliance() {
+function SlaCompliance({ range }: { range: DashboardRange }) {
   const data = useQuery({
-    queryKey: ['metrics', 'sla'],
+    queryKey: ['metrics', 'sla', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{
@@ -336,7 +366,7 @@ function SlaCompliance() {
         breached: number;
         openBreached: number;
         compliance: number | null;
-      }>('/metrics/sla?days=30'),
+      }>(`/metrics/sla?range=${range}`),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -363,7 +393,8 @@ function SlaCompliance() {
       tone: 'text-[var(--color-severity-critical)]',
     },
     {
-      label: 'Still open and overdue',
+      // The state of the queue now; no period applies to it.
+      label: 'Open and overdue now',
       value: openBreached,
       to: `/cases?status=${OPEN_STATUSES}&breached=true`,
       tone: openBreached > 0 ? 'text-[var(--color-severity-critical)]' : undefined,
@@ -388,7 +419,7 @@ function SlaCompliance() {
           {compliance === null ? '—' : `${compliance}%`}
         </p>
         <p className="mt-1 text-xs text-[var(--color-content-muted)]">
-          of {closed} case(s) closed within target, last 30 days
+          of {closed} case(s) closed within target, {periodPhrase(range)}
         </p>
       </div>
 
@@ -408,16 +439,16 @@ function SlaCompliance() {
   );
 }
 
-function ResolutionTime() {
+function ResolutionTime({ range }: { range: DashboardRange }) {
   const navigate = useNavigate();
   const data = useQuery({
-    queryKey: ['metrics', 'resolution-time'],
+    queryKey: ['metrics', 'resolution-time', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{
         since: string;
         items: { severity: string; hours: number | null; cases: number }[];
-      }>('/metrics/resolution-time?days=30'),
+      }>(`/metrics/resolution-time?range=${range}`),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -427,8 +458,8 @@ function ResolutionTime() {
   if (items.length === 0) {
     return (
       <EmptyState
-        title="Nothing closed yet"
-        description="No cases were closed in the last 30 days."
+        title="Nothing closed"
+        description={`No cases were closed in the ${periodPhrase(range)}.`}
       />
     );
   }
@@ -526,13 +557,15 @@ function Workload() {
   );
 }
 
-function AlertsByStatus() {
+function AlertsByStatus({ range }: { range: DashboardRange }) {
   const navigate = useNavigate();
   const data = useQuery({
-    queryKey: ['metrics', 'alerts-by-status'],
+    queryKey: ['metrics', 'alerts-by-status', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
-      api.get<{ items: { status: string; count: number }[] }>('/metrics/alerts-by-status'),
+      api.get<{ since: string; items: { status: string; count: number }[] }>(
+        `/metrics/alerts-by-status?range=${range}`,
+      ),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -541,8 +574,8 @@ function AlertsByStatus() {
     return (
       <EmptyState
         icon={<IconInbox className="h-8 w-8" />}
-        title="No alerts received"
-        description="Point a SIEM at the ingest endpoint to fill this queue."
+        title={`No alerts received in the ${periodPhrase(range)}`}
+        description="Choose a longer period, or point a SIEM at the ingest endpoint."
       />
     );
   }
@@ -564,7 +597,9 @@ function AlertsByStatus() {
             name="Alerts"
             radius={[4, 4, 0, 0]}
             onClick={onBarClick<{ status: string }>((row) => {
-              if (row.status) navigate(`/alerts?status=${row.status}`);
+              if (!row.status) return;
+              const query = new URLSearchParams({ status: row.status, from: data.data.since });
+              navigate(`/alerts?${query.toString()}`);
             })}
           >
             {data.data.items.map((entry) => (
@@ -581,21 +616,21 @@ function AlertsByStatus() {
   );
 }
 
-function AlertsBySource() {
+function AlertsBySource({ range }: { range: DashboardRange }) {
   const navigate = useNavigate();
   const data = useQuery({
-    queryKey: ['metrics', 'alerts-by-source'],
+    queryKey: ['metrics', 'alerts-by-source', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{ since: string; items: { source: string; count: number }[] }>(
-        '/metrics/alerts-by-source?days=14',
+        `/metrics/alerts-by-source?range=${range}`,
       ),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
   if (!data.data) return <ChartSkeleton height={180} />;
   if (data.data.items.length === 0) {
-    return <EmptyState title="No alerts in the last 14 days" />;
+    return <EmptyState title={`No alerts in the ${periodPhrase(range)}`} />;
   }
 
   return (
@@ -640,12 +675,14 @@ function AlertsBySource() {
   );
 }
 
-function TopTags() {
+function TopTags({ range }: { range: DashboardRange }) {
   const data = useQuery({
-    queryKey: ['metrics', 'top-tags'],
+    queryKey: ['metrics', 'top-tags', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
-      api.get<{ items: { tag: string; count: number }[] }>('/metrics/top-tags?limit=8'),
+      api.get<{ since: string; items: { tag: string; count: number }[] }>(
+        `/metrics/top-tags?limit=8&range=${range}`,
+      ),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -659,7 +696,10 @@ function TopTags() {
     );
   }
 
-  if (data.data.items.length === 0) return <EmptyState title="No tagged cases yet" />;
+  if (data.data.items.length === 0) {
+    return <EmptyState title={`No tagged cases opened in the ${periodPhrase(range)}`} />;
+  }
+  const openedSince = `status=all&dateField=createdAt&from=${encodeURIComponent(data.data.since)}`;
   const max = Math.max(...data.data.items.map((entry) => entry.count));
 
   return (
@@ -667,7 +707,7 @@ function TopTags() {
       {data.data.items.map((entry) => (
         <li key={entry.tag}>
           <Link
-            to={`/cases?status=all&tag=${encodeURIComponent(entry.tag)}`}
+            to={`/cases?${openedSince}&tag=${encodeURIComponent(entry.tag)}`}
             className="flex items-center gap-2 rounded px-1.5 py-1 text-sm transition-colors hover:bg-[var(--color-surface-overlay)]"
           >
             <span className="w-36 truncate">{entry.tag}</span>
@@ -687,14 +727,14 @@ function TopTags() {
   );
 }
 
-function TopObservables() {
+function TopObservables({ range }: { range: DashboardRange }) {
   const data = useQuery({
-    queryKey: ['metrics', 'top-observables'],
+    queryKey: ['metrics', 'top-observables', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
       api.get<{
         items: { id: string; type: string; value: string; sightings: number; isNoisy: boolean }[];
-      }>('/metrics/top-observables?limit=8'),
+      }>(`/metrics/top-observables?limit=8&range=${range}`),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -711,8 +751,8 @@ function TopObservables() {
   if (data.data.items.length === 0) {
     return (
       <EmptyState
-        title="Nothing seen twice yet"
-        description="Indicators appear here once they show up on more than one case."
+        title={`Nothing seen twice in the ${periodPhrase(range)}`}
+        description="Indicators appear here once they show up on more than one case opened in the period."
       />
     );
   }
@@ -841,14 +881,15 @@ function DueSoon() {
   );
 }
 
-function MitreCoverage() {
+function MitreCoverage({ range }: { range: DashboardRange }) {
   const data = useQuery({
-    queryKey: ['metrics', 'mitre'],
+    queryKey: ['metrics', 'mitre', range],
     refetchInterval: REFRESH_MS,
     queryFn: () =>
-      api.get<{ items: { id: string; name: string; tactic: string; count: number }[] }>(
-        '/metrics/mitre-coverage?limit=8',
-      ),
+      api.get<{
+        since: string;
+        items: { id: string; name: string; tactic: string; count: number }[];
+      }>(`/metrics/mitre-coverage?limit=8&range=${range}`),
   });
 
   if (data.isError) return <WidgetError onRetry={() => void data.refetch()} />;
@@ -862,14 +903,19 @@ function MitreCoverage() {
     );
   }
 
-  if (data.data.items.length === 0) return <EmptyState title="No techniques tagged yet" />;
+  if (data.data.items.length === 0) {
+    return (
+      <EmptyState title={`No techniques tagged on cases opened in the ${periodPhrase(range)}`} />
+    );
+  }
+  const openedSince = `status=all&dateField=createdAt&from=${encodeURIComponent(data.data.since)}`;
 
   return (
     <ul className="space-y-1 py-1 text-sm">
       {data.data.items.map((entry) => (
         <li key={entry.id}>
           <Link
-            to={`/cases?status=all&mitre=${entry.id}`}
+            to={`/cases?${openedSince}&mitre=${entry.id}`}
             className="flex items-baseline gap-2 rounded px-1.5 py-1 transition-colors hover:bg-[var(--color-surface-overlay)]"
           >
             <span className="w-20 shrink-0 font-mono text-xs">{entry.id}</span>
@@ -892,7 +938,13 @@ export interface WidgetDefinition {
   title: string;
   description: string;
   defaultWidth: 'half' | 'full';
-  render: () => React.ReactNode;
+  /**
+   * `period`: counts over the period chosen for the dashboard. `now`: the
+   * current state of the queue, which no period changes — an open case is
+   * open whenever it was opened.
+   */
+  scope: 'period' | 'now';
+  render: (range: DashboardRange) => React.ReactNode;
 }
 
 export const WIDGETS: WidgetDefinition[] = [
@@ -901,77 +953,88 @@ export const WIDGETS: WidgetDefinition[] = [
     title: 'Next Up — By Deadline',
     description: 'Open cases ordered by how soon they breach',
     defaultWidth: 'full',
+    scope: 'now',
     render: () => <DueSoon />,
   },
   {
     id: 'case-trend',
     title: 'Opened Vs Closed',
-    description: 'Daily workload over the last fortnight',
+    description: 'Cases opened and closed across the period',
     defaultWidth: 'half',
-    render: () => <CaseTrend />,
+    scope: 'period',
+    render: (range) => <CaseTrend range={range} />,
   },
   {
     id: 'open-by-severity',
     title: 'Open By Severity',
     description: 'Where the open work sits',
     defaultWidth: 'half',
+    scope: 'now',
     render: () => <OpenBySeverity />,
   },
   {
     id: 'sla',
     title: 'SLA Compliance',
-    description: 'Share of cases closed inside target, last 30 days',
+    description: 'Share of cases closed inside target in the period',
     defaultWidth: 'half',
-    render: () => <SlaCompliance />,
+    scope: 'period',
+    render: (range) => <SlaCompliance range={range} />,
   },
   {
     id: 'resolution-time',
     title: 'Mean Time To Close',
-    description: 'Hours from incident to closure, per severity',
+    description: 'Hours from incident to closure, per severity, for cases closed in the period',
     defaultWidth: 'half',
-    render: () => <ResolutionTime />,
+    scope: 'period',
+    render: (range) => <ResolutionTime range={range} />,
   },
   {
     id: 'workload',
     title: 'Analyst Workload',
     description: 'Open cases per analyst, unassigned included',
     defaultWidth: 'half',
+    scope: 'now',
     render: () => <Workload />,
   },
   {
     id: 'alerts-by-status',
     title: 'Alert Queue',
-    description: 'Detections waiting, imported and dismissed',
+    description: 'Alerts received in the period: waiting, imported and dismissed',
     defaultWidth: 'half',
-    render: () => <AlertsByStatus />,
+    scope: 'period',
+    render: (range) => <AlertsByStatus range={range} />,
   },
   {
     id: 'alerts-by-source',
     title: 'Alerts By Source',
     description: 'Which system is sending the volume',
     defaultWidth: 'half',
-    render: () => <AlertsBySource />,
+    scope: 'period',
+    render: (range) => <AlertsBySource range={range} />,
   },
   {
     id: 'top-tags',
     title: 'Most Used Tags',
-    description: 'What the team is actually seeing',
+    description: 'What the team is actually seeing, on cases opened in the period',
     defaultWidth: 'half',
-    render: () => <TopTags />,
+    scope: 'period',
+    render: (range) => <TopTags range={range} />,
   },
   {
     id: 'top-observables',
     title: 'Recurring Indicators',
-    description: 'Indicators appearing on several cases',
+    description: 'Indicators appearing on several cases opened in the period',
     defaultWidth: 'half',
-    render: () => <TopObservables />,
+    scope: 'period',
+    render: (range) => <TopObservables range={range} />,
   },
   {
     id: 'mitre-coverage',
     title: 'ATT&CK Coverage',
-    description: 'Techniques tagged most often',
+    description: 'Techniques tagged most often on cases opened in the period',
     defaultWidth: 'half',
-    render: () => <MitreCoverage />,
+    scope: 'period',
+    render: (range) => <MitreCoverage range={range} />,
   },
 ];
 

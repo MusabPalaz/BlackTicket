@@ -68,10 +68,27 @@ A summary of open work and SLA pressure. The dashboard **is yours**: with
 `Done` when finished. The layout is stored with your account and follows you to
 another machine.
 
-**Every number on the dashboard is clickable.** Clicking a bar, a slice, a day
-column or an SLA row takes you to the records behind it, and the target page
-shows which filter was applied as a chip — removable with one click. You never
-have to rebuild the filter by hand after seeing "7 breached".
+**Time range.** The buttons at the top — `1h`, `3h`, `6h`, `12h`, `24h`, `3d`,
+`7d`, `30d` — set the period the whole board counts over; the default is the last
+24 hours. Every card says what it covers in its top-right corner:
+
+- **`Last 24 hours`** (or the period you chose): activity in that period — cases
+  opened and closed, SLA compliance and mean time to close for cases closed in it,
+  alerts received in it, and the tags, ATT&CK techniques and recurring indicators of
+  cases opened in it.
+- **`Now`**: the queue as it stands — `Next Up`, `Open By Severity`, `Analyst
+  Workload`. An open case is open however long ago it was opened, so the period
+  does not change these.
+
+`Opened Vs Closed` adapts its points to the period: five-minute slots for the last
+hour, hours for a day, six-hour slots for three days, days from a week up — all on
+your own clock. Your choice is stored with your account, like the layout.
+
+**Every number on the dashboard is clickable.** Clicking a bar, a slice, a column
+of the trend or an SLA row takes you to the records behind it, over the same
+period, and the target page shows which filter was applied as a chip — "Opened
+2026-10-01 23:00–00:00", for example — removable with one click. You never have to
+rebuild the filter by hand after seeing "7 breached".
 
 ---
 

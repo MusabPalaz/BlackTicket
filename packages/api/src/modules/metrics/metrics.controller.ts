@@ -2,7 +2,12 @@ import { Body, Controller, Get, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsObject } from 'class-validator';
 import type { User } from '@prisma/client';
-import { Permission } from '@black-ticket/shared';
+import {
+  DASHBOARD_RANGE_SPECS,
+  Permission,
+  isDashboardRange,
+  type DashboardRangeSpec,
+} from '@black-ticket/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MetricsService, resolveTimeZone } from './metrics.service';
@@ -17,6 +22,26 @@ function windowDays(value: string | undefined, fallback = 14): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(365, Math.max(1, Math.round(parsed)));
+}
+
+type Period = Pick<DashboardRangeSpec, 'minutes' | 'bucketMinutes'>;
+
+/**
+ * The dashboard's period (`range=24h`), or — as before periods existed — a
+ * number of days, counted in days.
+ */
+function periodOf(
+  range: string | undefined,
+  days: string | undefined,
+  fallbackDays: number,
+): Period {
+  if (isDashboardRange(range)) return DASHBOARD_RANGE_SPECS[range];
+  return { minutes: windowDays(days, fallbackDays) * 1440, bucketMinutes: 1440 };
+}
+
+/** For widgets that count over everything unless a period is asked for. */
+function optionalMinutes(range: string | undefined): number | null {
+  return isDashboardRange(range) ? DASHBOARD_RANGE_SPECS[range].minutes : null;
 }
 
 function limitOf(value: string | undefined, fallback = 10): number {
@@ -35,9 +60,16 @@ export class MetricsController {
 
   @Get('metrics/case-trend')
   @RequirePermissions(Permission.DASHBOARD_READ)
-  @ApiOperation({ summary: 'Cases opened and closed per day, in the viewer’s time zone (`tz`)' })
-  caseTrend(@Query('days') days?: string, @Query('tz') tz?: string) {
-    return this.metrics.caseTrend(windowDays(days), resolveTimeZone(tz));
+  @ApiOperation({
+    summary:
+      'Cases opened and closed per point of a period (`range`: 1h…30d), on the viewer’s clock (`tz`)',
+  })
+  caseTrend(
+    @Query('range') range?: string,
+    @Query('days') days?: string,
+    @Query('tz') tz?: string,
+  ) {
+    return this.metrics.caseTrend(periodOf(range, days, 14), resolveTimeZone(tz));
   }
 
   @Get('metrics/open-by-severity')
@@ -56,16 +88,16 @@ export class MetricsController {
 
   @Get('metrics/sla')
   @RequirePermissions(Permission.DASHBOARD_READ)
-  @ApiOperation({ summary: 'SLA compliance over a window' })
-  sla(@Query('days') days?: string) {
-    return this.metrics.slaCompliance(windowDays(days, 30));
+  @ApiOperation({ summary: 'SLA compliance over a period' })
+  sla(@Query('range') range?: string, @Query('days') days?: string) {
+    return this.metrics.slaCompliance(periodOf(range, days, 30).minutes);
   }
 
   @Get('metrics/resolution-time')
   @RequirePermissions(Permission.DASHBOARD_READ)
   @ApiOperation({ summary: 'Mean hours from incident to close, per severity' })
-  resolutionTime(@Query('days') days?: string) {
-    return this.metrics.resolutionTime(windowDays(days, 30));
+  resolutionTime(@Query('range') range?: string, @Query('days') days?: string) {
+    return this.metrics.resolutionTime(periodOf(range, days, 30).minutes);
   }
 
   @Get('metrics/workload')
@@ -77,30 +109,30 @@ export class MetricsController {
 
   @Get('metrics/alerts-by-status')
   @RequirePermissions(Permission.ALERT_READ)
-  @ApiOperation({ summary: 'Alert queue by status' })
-  alertsByStatus() {
-    return this.metrics.alertsByStatus();
+  @ApiOperation({ summary: 'Alert queue by status; with `range`, only alerts received in it' })
+  alertsByStatus(@Query('range') range?: string) {
+    return this.metrics.alertsByStatus(optionalMinutes(range));
   }
 
   @Get('metrics/alerts-by-source')
   @RequirePermissions(Permission.ALERT_READ)
   @ApiOperation({ summary: 'Alert volume by source system' })
-  alertsBySource(@Query('days') days?: string) {
-    return this.metrics.alertsBySource(windowDays(days));
+  alertsBySource(@Query('range') range?: string, @Query('days') days?: string) {
+    return this.metrics.alertsBySource(periodOf(range, days, 14).minutes);
   }
 
   @Get('metrics/top-tags')
   @RequirePermissions(Permission.DASHBOARD_READ)
-  @ApiOperation({ summary: 'Most used case tags' })
-  topTags(@Query('limit') limit?: string) {
-    return this.metrics.topTags(limitOf(limit));
+  @ApiOperation({ summary: 'Most used case tags; with `range`, on cases opened in it' })
+  topTags(@Query('limit') limit?: string, @Query('range') range?: string) {
+    return this.metrics.topTags(limitOf(limit), optionalMinutes(range));
   }
 
   @Get('metrics/top-observables')
   @RequirePermissions(Permission.CASE_READ)
-  @ApiOperation({ summary: 'Indicators seen on the most cases' })
-  topObservables(@Query('limit') limit?: string) {
-    return this.metrics.topObservables(limitOf(limit));
+  @ApiOperation({ summary: 'Indicators seen on the most cases; with `range`, cases opened in it' })
+  topObservables(@Query('limit') limit?: string, @Query('range') range?: string) {
+    return this.metrics.topObservables(limitOf(limit), optionalMinutes(range));
   }
 
   @Get('metrics/due-soon')
@@ -112,9 +144,11 @@ export class MetricsController {
 
   @Get('metrics/mitre-coverage')
   @RequirePermissions(Permission.DASHBOARD_READ)
-  @ApiOperation({ summary: 'Most frequently tagged ATT&CK techniques' })
-  mitreCoverage(@Query('limit') limit?: string) {
-    return this.metrics.mitreCoverage(limitOf(limit));
+  @ApiOperation({
+    summary: 'Most frequently tagged ATT&CK techniques; with `range`, on cases opened in it',
+  })
+  mitreCoverage(@Query('limit') limit?: string, @Query('range') range?: string) {
+    return this.metrics.mitreCoverage(limitOf(limit), optionalMinutes(range));
   }
 
   // --------------------------------------------------------- own preferences

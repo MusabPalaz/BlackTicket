@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CaseStatus, Permission, Severity } from '@black-ticket/shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { describeWindow } from '@/lib/date-window';
 import {
   Button,
   Card,
@@ -45,19 +46,14 @@ const FILTER_KEYS = [
 ] as const;
 
 /**
- * "Opened on 2026-10-01" for a one-day drill-down, "Closed since 2026-09-01"
- * for an open-ended window. Dates are the reader's local ones.
+ * "Opened on 2026-10-01" for a one-day drill-down, "Opened 2026-10-02
+ * 14:00–15:00" for an hour of the trend, "Closed since 2026-10-01 09:12" for
+ * the last 24 hours. Times are the reader's local ones.
  */
 function dateWindowLabel(params: URLSearchParams): string {
   const field =
     { createdAt: 'Opened', closedAt: 'Closed' }[params.get('dateField') ?? ''] ?? 'Occurred';
-  const localDate = (value: string) => new Date(value).toLocaleDateString('en-CA');
-  const from = params.get('from')!;
-  const to = params.get('to');
-  if (!to) return `${field} since ${localDate(from)}`;
-  return localDate(from) === localDate(to)
-    ? `${field} on ${localDate(from)}`
-    : `${field} ${localDate(from)} – ${localDate(to)}`;
+  return `${field} ${describeWindow(params.get('from')!, params.get('to'))}`;
 }
 
 export function CasesListPage() {

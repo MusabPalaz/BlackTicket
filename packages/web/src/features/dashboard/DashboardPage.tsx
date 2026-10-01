@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Permission } from '@black-ticket/shared';
+import {
+  DASHBOARD_RANGES,
+  DASHBOARD_RANGE_SPECS,
+  DEFAULT_DASHBOARD_RANGE,
+  Permission,
+  isDashboardRange,
+  type DashboardRange,
+} from '@black-ticket/shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePreferences, useSavePreferences } from '@/lib/preferences';
@@ -29,6 +36,67 @@ function storedLayout(saved: LayoutEntry[] | undefined): LayoutEntry[] {
   if (!Array.isArray(saved)) return DEFAULT_LAYOUT;
   const known = saved.filter((entry) => WIDGETS.some((widget) => widget.id === entry.id));
   return saved.length > 0 && known.length === 0 ? DEFAULT_LAYOUT : known;
+}
+
+/** The period picker: short labels in one row, the full one on hover. */
+function RangePicker({
+  value,
+  onChange,
+}: {
+  value: DashboardRange;
+  onChange: (next: DashboardRange) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Time range"
+      className="inline-flex flex-wrap items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-0.5"
+    >
+      {DASHBOARD_RANGES.map((range) => {
+        const on = range === value;
+        return (
+          <button
+            key={range}
+            type="button"
+            aria-pressed={on}
+            aria-label={DASHBOARD_RANGE_SPECS[range].label}
+            title={DASHBOARD_RANGE_SPECS[range].label}
+            onClick={() => onChange(range)}
+            className={cx(
+              'rounded px-2.5 py-1.5 text-xs font-medium tabular-nums transition-colors',
+              on
+                ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent)]'
+                : 'text-[var(--color-content-muted)] hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-content)]',
+            )}
+          >
+            {range}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** What a card counts over: the chosen period, or the queue as it stands. */
+function PeriodChip({ scope, range }: { scope: WidgetDefinition['scope']; range: DashboardRange }) {
+  const now = scope === 'now';
+  return (
+    <span
+      title={
+        now
+          ? 'The queue as it stands; the time range does not change it'
+          : 'Follows the time range chosen at the top'
+      }
+      className={cx(
+        'rounded border px-1.5 py-0.5 text-[11px] whitespace-nowrap',
+        now
+          ? 'border-[var(--color-border-subtle)] text-[var(--color-content-faint)]'
+          : 'border-[var(--color-border-strong)] text-[var(--color-accent)]',
+      )}
+    >
+      {now ? 'Now' : DASHBOARD_RANGE_SPECS[range].label}
+    </span>
+  );
 }
 
 /**
@@ -61,6 +129,22 @@ export function DashboardPage() {
   const layout = draft ?? stored;
 
   const savePreferences = useSavePreferences();
+
+  /*
+   * The period the activity widgets count over. Saved on the account like the
+   * layout, so a wall screen left on "last 24 hours" comes back to it. A pick
+   * applies at once, without waiting for the save.
+   */
+  const [rangeChoice, setRangeChoice] = useState<DashboardRange | null>(null);
+  const savedRange = preferences.data?.preferences?.dashboardRange;
+  const range =
+    rangeChoice ?? (isDashboardRange(savedRange) ? savedRange : DEFAULT_DASHBOARD_RANGE);
+  const saveRange = useSavePreferences();
+
+  function chooseRange(next: DashboardRange) {
+    setRangeChoice(next);
+    saveRange.mutate({ dashboardRange: next });
+  }
 
   function saveLayout(next: LayoutEntry[]) {
     savePreferences.mutate(
@@ -135,6 +219,7 @@ export function DashboardPage() {
         }
         actions={
           <>
+            <RangePicker value={range} onChange={chooseRange} />
             {editing && (
               <Button
                 variant="secondary"
@@ -234,48 +319,51 @@ export function DashboardPage() {
                   )}
                 </div>
 
-                {editing && (
-                  <div className="flex shrink-0 items-center gap-1 text-xs">
-                    <button
-                      onClick={() => move(index, -1)}
-                      disabled={index === 0}
-                      title="Move up"
-                      className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 disabled:opacity-30"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      onClick={() => move(index, 1)}
-                      disabled={index === layout.length - 1}
-                      title="Move down"
-                      className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 disabled:opacity-30"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      onClick={() =>
-                        update(
-                          layout.map((item, position) =>
-                            position === index
-                              ? { ...item, width: item.width === 'full' ? 'half' : 'full' }
-                              : item,
-                          ),
-                        )
-                      }
-                      title="Toggle width"
-                      className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5"
-                    >
-                      {entry.width === 'full' ? 'full' : 'half'}
-                    </button>
-                    <button
-                      onClick={() => update(layout.filter((_, position) => position !== index))}
-                      title="Remove"
-                      className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[var(--color-severity-critical)]"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  <PeriodChip scope={widget.scope} range={range} />
+                  {editing && (
+                    <div className="flex shrink-0 items-center gap-1 text-xs">
+                      <button
+                        onClick={() => move(index, -1)}
+                        disabled={index === 0}
+                        title="Move up"
+                        className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 disabled:opacity-30"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => move(index, 1)}
+                        disabled={index === layout.length - 1}
+                        title="Move down"
+                        className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 disabled:opacity-30"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() =>
+                          update(
+                            layout.map((item, position) =>
+                              position === index
+                                ? { ...item, width: item.width === 'full' ? 'half' : 'full' }
+                                : item,
+                            ),
+                          )
+                        }
+                        title="Toggle width"
+                        className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5"
+                      >
+                        {entry.width === 'full' ? 'full' : 'half'}
+                      </button>
+                      <button
+                        onClick={() => update(layout.filter((_, position) => position !== index))}
+                        title="Remove"
+                        className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[var(--color-severity-critical)]"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* One widget that throws must not take the other ten with it. */}
@@ -294,7 +382,7 @@ export function DashboardPage() {
                   </div>
                 )}
               >
-                {widget.render()}
+                {widget.render(range)}
               </ErrorBoundary>
             </section>
           );

@@ -13,3 +13,4 @@ export * from './observables';
 export * from './csv';
 export * from './attack';
 export * from './lookups';
+export * from './dashboard';

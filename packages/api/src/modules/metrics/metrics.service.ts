@@ -1,22 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { CaseStatus, Severity, formatCaseNumber } from '@black-ticket/shared';
+import { Prisma } from '@prisma/client';
+import {
+  CaseStatus,
+  Severity,
+  bucketIndex,
+  formatCaseNumber,
+  trendBuckets,
+  type DashboardRangeSpec,
+} from '@black-ticket/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { slaBreachedWhere } from '../cases/sla-breach';
 
 const OPEN_STATUSES = [CaseStatus.NEW, CaseStatus.IN_PROGRESS, CaseStatus.PENDING];
 
-const DAY_MS = 86_400_000;
-
-/** Maps an instant to its `YYYY-MM-DD` as seen in a time zone. */
-function dayKeyIn(timeZone: string): (instant: Date) => string {
-  // en-CA formats dates as YYYY-MM-DD.
-  const format = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return (instant) => format.format(instant);
+/** The start of a period that ends now, `minutes` long. */
+function sinceOf(minutes: number): Date {
+  return new Date(Date.now() - minutes * 60_000);
 }
 
 /** The time zone to count days in: the viewer's, when it is a real one. */
@@ -42,30 +41,19 @@ export class MetricsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Cases opened and closed per day — the shape of the workload.
+   * Cases opened and closed per point — the shape of the workload.
    *
-   * Days are the viewer's calendar days, today included. Counting them in the
-   * server's zone (UTC in the container) put a case opened at 01:00 in
-   * Istanbul on the previous day, and a server in a zone east of UTC dropped
-   * today from the chart altogether.
+   * Points are the viewer's own hours or calendar days, the current one
+   * included. Counting them in the server's zone (UTC in the container) put a
+   * case opened at 01:00 in Istanbul on the previous day, and a server in a
+   * zone east of UTC dropped today from the chart altogether. Each point goes
+   * back with its exact start and end, so a click lists precisely the cases
+   * it counted.
    */
-  async caseTrend(days: number, timeZone: string) {
-    const now = new Date();
-    const dayKey = dayKeyIn(timeZone);
-    const today = dayKey(now);
-
-    // Calendar arithmetic on the date itself, so a daylight-saving change
-    // cannot skip or repeat a day.
-    const [year, month, day] = today.split('-').map(Number) as [number, number, number];
-    const buckets = new Map<string, { date: string; opened: number; closed: number }>();
-    for (let offset = days - 1; offset >= 0; offset -= 1) {
-      const date = new Date(Date.UTC(year, month - 1, day - offset)).toISOString().slice(0, 10);
-      buckets.set(date, { date, opened: 0, closed: 0 });
-    }
-
-    // A day either side of the window covers every zone's offset; rows that
-    // land outside the buckets are simply not counted.
-    const since = new Date(now.getTime() - (days + 1) * DAY_MS);
+  async caseTrend(period: Pick<DashboardRangeSpec, 'minutes' | 'bucketMinutes'>, timeZone: string) {
+    const buckets = trendBuckets(period, timeZone);
+    const counts = buckets.map(() => ({ opened: 0, closed: 0 }));
+    const since = new Date(buckets[0]!.start);
     const [opened, closed] = await Promise.all([
       this.prisma.case.findMany({
         where: { deletedAt: null, createdAt: { gte: since } },
@@ -78,15 +66,23 @@ export class MetricsService {
     ]);
 
     for (const row of opened) {
-      const bucket = buckets.get(dayKey(row.createdAt));
-      if (bucket) bucket.opened += 1;
+      const index = bucketIndex(buckets, row.createdAt.getTime());
+      if (index !== -1) counts[index]!.opened += 1;
     }
     for (const row of closed) {
-      const bucket = buckets.get(dayKey(row.closedAt!));
-      if (bucket) bucket.closed += 1;
+      const index = bucketIndex(buckets, row.closedAt!.getTime());
+      if (index !== -1) counts[index]!.closed += 1;
     }
 
-    return { timeZone, items: [...buckets.values()] };
+    return {
+      timeZone,
+      bucketMinutes: period.bucketMinutes,
+      items: buckets.map((bucket, index) => ({
+        start: new Date(bucket.start).toISOString(),
+        end: new Date(bucket.end).toISOString(),
+        ...counts[index]!,
+      })),
+    };
   }
 
   async openBySeverity() {
@@ -126,9 +122,9 @@ export class MetricsService {
    * exactly the same instant — a list that also showed older closures would
    * not add up to the figure it was opened from.
    */
-  async slaCompliance(days: number) {
+  async slaCompliance(minutes: number) {
     const now = new Date();
-    const since = new Date(now.getTime() - days * DAY_MS);
+    const since = sinceOf(minutes);
 
     const closed = await this.prisma.case.findMany({
       where: { deletedAt: null, status: CaseStatus.CLOSED, closedAt: { gte: since } },
@@ -153,8 +149,8 @@ export class MetricsService {
   }
 
   /** Mean time to resolve, in hours, per severity. */
-  async resolutionTime(days: number) {
-    const since = new Date(Date.now() - days * DAY_MS);
+  async resolutionTime(minutes: number) {
+    const since = sinceOf(minutes);
 
     const rows = await this.prisma.case.findMany({
       where: { deletedAt: null, status: CaseStatus.CLOSED, closedAt: { gte: since } },
@@ -223,13 +219,22 @@ export class MetricsService {
     };
   }
 
-  async alertsByStatus() {
-    const grouped = await this.prisma.alert.groupBy({ by: ['status'], _count: { _all: true } });
-    return { items: grouped.map((entry) => ({ status: entry.status, count: entry._count._all })) };
+  /** Alerts received in the period, by where they stand now; every alert without one. */
+  async alertsByStatus(minutes: number | null) {
+    const since = minutes === null ? null : sinceOf(minutes);
+    const grouped = await this.prisma.alert.groupBy({
+      by: ['status'],
+      where: since ? { receivedAt: { gte: since } } : {},
+      _count: { _all: true },
+    });
+    return {
+      since: since?.toISOString() ?? null,
+      items: grouped.map((entry) => ({ status: entry.status, count: entry._count._all })),
+    };
   }
 
-  async alertsBySource(days: number) {
-    const since = new Date(Date.now() - days * DAY_MS);
+  async alertsBySource(minutes: number) {
+    const since = sinceOf(minutes);
     const grouped = await this.prisma.alert.groupBy({
       by: ['source'],
       where: { receivedAt: { gte: since } },
@@ -246,25 +251,64 @@ export class MetricsService {
   }
 
   /**
-   * Counted in the database over every case. Reading the tag arrays into the
-   * process used to stop at 5,000 cases, which at a year's volume meant the
-   * ranking came from an arbitrary slice of them.
+   * Counted in the database, over the cases opened in the period or over
+   * every case. Reading the tag arrays into the process used to stop at 5,000
+   * cases, which at a year's volume meant the ranking came from an arbitrary
+   * slice of them.
    */
-  async topTags(limit: number) {
+  async topTags(limit: number, minutes: number | null) {
+    const since = minutes === null ? null : sinceOf(minutes);
     const rows = await this.prisma.$queryRaw<{ tag: string; count: bigint }[]>`
       SELECT tag, COUNT(DISTINCT "case"."id") AS count
       FROM "case", unnest("tags") AS tag
       WHERE "deletedAt" IS NULL
+      ${since ? Prisma.sql`AND "createdAt" >= ${since}` : Prisma.empty}
       GROUP BY tag
       ORDER BY count DESC, tag ASC
       LIMIT ${limit}
     `;
 
-    return { items: rows.map((row) => ({ tag: row.tag, count: Number(row.count) })) };
+    return {
+      since: since?.toISOString() ?? null,
+      items: rows.map((row) => ({ tag: row.tag, count: Number(row.count) })),
+    };
   }
 
-  /** Indicators seen on the most cases — the recurring ones worth blocking. */
-  async topObservables(limit: number) {
+  /**
+   * Indicators seen on the most cases — the recurring ones worth blocking.
+   *
+   * Over a period, the cases are the ones opened in it: an address that turned
+   * up on five cases this week is news even if it was seen once a year ago.
+   */
+  async topObservables(limit: number, minutes: number | null) {
+    if (minutes !== null) {
+      const since = sinceOf(minutes);
+      const recent = await this.prisma.$queryRaw<
+        { id: string; type: string; normalizedValue: string; isNoisy: boolean; count: bigint }[]
+      >`
+        SELECT o."id", o."type", o."normalizedValue", o."isNoisy",
+               COUNT(DISTINCT co."caseId") AS count
+        FROM "case_observable" co
+        JOIN "case" c ON c."id" = co."caseId"
+        JOIN "observable" o ON o."id" = co."observableId"
+        WHERE c."deletedAt" IS NULL AND c."createdAt" >= ${since}
+        GROUP BY o."id"
+        HAVING COUNT(DISTINCT co."caseId") > 1
+        ORDER BY count DESC, o."normalizedValue" ASC
+        LIMIT ${limit}
+      `;
+      return {
+        since: since.toISOString(),
+        items: recent.map((row) => ({
+          id: row.id,
+          type: row.type,
+          value: row.normalizedValue,
+          sightings: Number(row.count),
+          isNoisy: row.isNoisy,
+        })),
+      };
+    }
+
     const rows = await this.prisma.observable.findMany({
       where: { sightingCount: { gt: 1 } },
       orderBy: { sightingCount: 'desc' },
@@ -273,6 +317,7 @@ export class MetricsService {
     });
 
     return {
+      since: null,
       items: rows.map((row) => ({
         id: row.id,
         type: row.type,
@@ -316,11 +361,13 @@ export class MetricsService {
     };
   }
 
-  async mitreCoverage(limit: number) {
+  /** Over the cases opened in the period, or every case without one. */
+  async mitreCoverage(limit: number, minutes: number | null) {
+    const since = minutes === null ? null : sinceOf(minutes);
     const grouped = await this.prisma.caseMitre.groupBy({
       by: ['techniqueId'],
       // A deleted case is not in the list this opens, so it cannot be counted.
-      where: { case: { deletedAt: null } },
+      where: { case: { deletedAt: null, ...(since ? { createdAt: { gte: since } } : {}) } },
       _count: { _all: true },
       orderBy: { _count: { techniqueId: 'desc' } },
       take: limit,
@@ -332,6 +379,7 @@ export class MetricsService {
     });
 
     return {
+      since: since?.toISOString() ?? null,
       items: grouped.map((entry) => {
         const technique = techniques.find((row) => row.id === entry.techniqueId);
         return {

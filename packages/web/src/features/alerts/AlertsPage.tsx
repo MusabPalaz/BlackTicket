@@ -7,6 +7,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { IndicatorLookup } from '@/components/IndicatorLookup';
+import { describeWindow } from '@/lib/date-window';
 import {
   Badge,
   Button,
@@ -165,7 +166,7 @@ export function AlertsPage() {
     source && { key: 'source', label: `Source: ${source}` },
     receivedFrom && {
       key: 'from',
-      label: `Received since ${new Date(receivedFrom).toLocaleDateString('en-CA')}`,
+      label: `Received ${describeWindow(receivedFrom, null)}`,
     },
     search && { key: 'q', label: `Search: ${search}` },
     status !== AlertStatus.NEW && status !== 'all' && { key: 'status', label: `Status: ${status}` },

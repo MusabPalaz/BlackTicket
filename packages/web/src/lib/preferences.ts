@@ -4,6 +4,9 @@ import { api } from '@/lib/api';
 /** Per-account UI preferences. Stored whole on the server; every key is optional. */
 export interface Preferences {
   dashboard?: { widgets?: { id: string; width: 'half' | 'full' }[] };
+  /** The dashboard's period. Its own key: a patch replaces a key whole, and
+   *  saving the layout would otherwise reset it. */
+  dashboardRange?: string;
   theme?: string;
 }
 
