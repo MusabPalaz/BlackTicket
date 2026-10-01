@@ -44,6 +44,26 @@ export class ObservableInputDto {
   description?: string;
 }
 
+export class RadarItemDto {
+  @ApiProperty({ enum: Object.values(ObservableType) })
+  @IsEnum(ObservableType)
+  type!: ObservableType;
+
+  @ApiProperty({ example: '185.220.101[.]4', description: 'Defanged input is accepted' })
+  @IsString()
+  @Length(1, 2_048)
+  value!: string;
+}
+
+export class RadarLookupDto {
+  @ApiProperty({ type: [RadarItemDto], description: 'Indicators found in a case being written' })
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => RadarItemDto)
+  items!: RadarItemDto[];
+}
+
 export class AddObservablesDto {
   @ApiProperty({ type: [ObservableInputDto] })
   @IsArray()

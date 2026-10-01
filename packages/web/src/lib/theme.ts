@@ -13,13 +13,15 @@ export const THEMES = [
     id: 'midnight',
     label: 'Midnight',
     description: 'The original dark blue-grey',
-    swatch: 'oklch(0.2 0.014 265)',
+    // Each swatch runs from the theme's ground to its accent: the two colours
+    // that make it recognisable.
+    swatch: 'linear-gradient(135deg, oklch(0.2 0.014 265) 25%, oklch(0.68 0.15 250))',
   },
   {
     id: 'tactical',
     label: 'Tactical',
     description: 'Command centre: olive, khaki and digital camouflage',
-    swatch: 'oklch(0.36 0.06 135)',
+    swatch: 'linear-gradient(135deg, oklch(0.32 0.06 135) 25%, oklch(0.8 0.07 95))',
   },
 ] as const;
 

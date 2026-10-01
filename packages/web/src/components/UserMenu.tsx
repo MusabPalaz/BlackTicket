@@ -185,7 +185,7 @@ export function UserMenu() {
                     aria-label={option.label}
                     title={`${option.label} — ${option.description}`}
                     onClick={() => chooseTheme(option.id)}
-                    style={{ backgroundColor: option.swatch }}
+                    style={{ background: option.swatch }}
                     className={cx(
                       'h-7 w-7 rounded-full border-2 transition-shadow',
                       selected

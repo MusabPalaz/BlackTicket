@@ -262,7 +262,7 @@ export function Badge({
   tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent';
 }) {
   const styles = {
-    neutral: 'border-[var(--color-border-subtle)] text-[var(--color-content-muted)]',
+    neutral: 'border-[var(--color-chip-border)] text-[var(--color-chip-text)]',
     good: 'border-[var(--color-tlp-green)]/60 text-[var(--color-tlp-green)]',
     warn: 'border-[var(--color-severity-medium)]/60 text-[var(--color-severity-medium)]',
     bad: 'border-[var(--color-severity-critical)]/60 text-[var(--color-severity-critical)]',

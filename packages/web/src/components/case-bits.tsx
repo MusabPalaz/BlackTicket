@@ -1,4 +1,5 @@
-import type { CaseStatus, Severity, Tlp } from '@black-ticket/shared';
+import type { ReactNode } from 'react';
+import type { CaseResolution, CaseStatus, Severity, Tlp } from '@black-ticket/shared';
 import { cx } from './ui';
 
 /**
@@ -22,16 +23,42 @@ const TLP_STYLE: Record<Tlp, string> = {
 
 const STATUS_STYLE: Record<CaseStatus, string> = {
   NEW: 'border-[var(--color-accent)] text-[var(--color-accent)]',
-  IN_PROGRESS: 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]',
+  IN_PROGRESS:
+    'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]',
   PENDING: 'border-[var(--color-severity-medium)] text-[var(--color-severity-medium)]',
   RESOLVED: 'border-[var(--color-tlp-green)] text-[var(--color-tlp-green)]',
-  CLOSED: 'border-[var(--color-border-subtle)] text-[var(--color-content-muted)]',
+  CLOSED: 'border-[var(--color-chip-border)] text-[var(--color-chip-text)]',
+};
+
+/**
+ * A confirmed incident has to stand out in a list of closed cases — it is the
+ * one someone may need to act on again — so TRUE POSITIVE is filled, not
+ * outlined. Verdicts that cleared the case read as green.
+ */
+const RESOLUTION_STYLE: Record<CaseResolution, string> = {
+  TRUE_POSITIVE:
+    'border-[var(--color-severity-critical)] bg-[var(--color-severity-critical)] text-white',
+  FALSE_POSITIVE: 'border-[var(--color-tlp-green)] text-[var(--color-tlp-green)]',
+  BENIGN: 'border-[var(--color-tlp-green)] text-[var(--color-tlp-green)]',
+  DUPLICATE: 'border-[var(--color-chip-border)] text-[var(--color-chip-text)]',
+  INDETERMINATE: 'border-[var(--color-chip-border)] text-[var(--color-chip-text)]',
 };
 
 const chip = 'inline-block rounded border px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap';
 
 export const SeverityChip = ({ value }: { value: Severity }) => (
   <span className={cx(chip, SEVERITY_STYLE[value])}>{value}</span>
+);
+
+export const ResolutionChip = ({ value }: { value: CaseResolution }) => (
+  <span className={cx(chip, RESOLUTION_STYLE[value])}>{value.replace('_', ' ')}</span>
+);
+
+/** A plain label such as a category: no meaning in its colour, but readable. */
+export const NeutralChip = ({ children }: { children: ReactNode }) => (
+  <span className={cx(chip, 'border-[var(--color-chip-border)] text-[var(--color-chip-text)]')}>
+    {children}
+  </span>
 );
 
 export const TlpChip = ({ value, label = 'TLP' }: { value: Tlp; label?: string }) => (
@@ -56,7 +83,10 @@ export function formatDateTime(value: string | null): string {
 }
 
 /** Compact "in 3h" / "6h overdue" used by the SLA column. */
-export function formatRelativeDeadline(due: string | null, closed: boolean): {
+export function formatRelativeDeadline(
+  due: string | null,
+  closed: boolean,
+): {
   label: string;
   overdue: boolean;
 } {

@@ -128,6 +128,26 @@ The `c` shortcut, or `Cases` → `New case`. What the fields mean:
   others tomorrow. Not finding the right word in a list should never stop you from
   opening a case.
 
+### Case Radar
+
+The panel on the right of `New case` reads the title and description as you
+type. Every indicator it finds — IP addresses, domains, URLs, hashes, e-mail
+addresses, defanged ones like `185.220.101[.]4` included — is looked up at once:
+
+- **Seen on N cases** — where it appeared before; the case numbers open in a new
+  tab, so the form you are writing stays as it is.
+- **Last verdict** — how the most recent closed case with this indicator ended
+  (for example *TRUE POSITIVE*), with the start of its closing summary.
+- **First sighting** — the team has not recorded it before.
+- **Whitelisted / noisy · will not link** — it will be recorded but will not
+  connect cases, exactly as correlation treats it.
+- **Possible duplicate** — an open case already has some of these indicators.
+  Check it before opening a second case for the same incident.
+
+The ticked indicators are added to the case as observables when you open it, and
+correlated straight away. Untick anything that is not part of the incident, such
+as an example address in a pasted e-mail.
+
 ### Status flow
 
 ```

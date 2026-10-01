@@ -23,6 +23,7 @@ import { CorrelationService } from './correlation.service';
 import {
   AddObservablesDto,
   CreateCaseLinkDto,
+  RadarLookupDto,
   SearchObservablesDto,
   UpdateCaseObservableDto,
 } from './dto/observable.dto';
@@ -89,6 +90,15 @@ export class ObservablesController {
   @ApiOperation({ summary: 'Global indicator search across every case' })
   search(@Query() query: SearchObservablesDto) {
     return this.observables.search(query);
+  }
+
+  // A read, sent as POST only because the indicators travel in the body.
+  @Post('observables/radar')
+  @RequirePermissions(Permission.CASE_READ)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'What is already known about indicators in a case being written' })
+  radar(@Body() dto: RadarLookupDto) {
+    return this.observables.radar(dto.items);
   }
 
   @Get('observables/:id/sightings')

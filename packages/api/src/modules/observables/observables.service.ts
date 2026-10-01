@@ -4,6 +4,7 @@ import {
   AuditAction,
   CaseLinkType,
   CaseStatus,
+  type ObservableType,
   Tlp,
   formatCaseNumber,
   normalizeObservable,
@@ -16,9 +17,15 @@ import { CorrelationService, type CorrelationHit } from './correlation.service';
 import type {
   CreateCaseLinkDto,
   ObservableInputDto,
+  RadarItemDto,
   SearchObservablesDto,
   UpdateCaseObservableDto,
 } from './dto/observable.dto';
+
+const OPEN_STATUSES: string[] = [CaseStatus.NEW, CaseStatus.IN_PROGRESS, CaseStatus.PENDING];
+
+/** Long enough to carry a verdict's reasoning, short enough for a side panel. */
+const SUMMARY_PREVIEW = 280;
 
 const CASE_OBSERVABLE_INCLUDE = {
   observable: true,
@@ -282,6 +289,146 @@ export class ObservablesService {
    * cannot tell a truncated list from an exhaustive one, and here that
    * difference decides whether an indicator looks new.
    */
+  /**
+   * What the team already knows about indicators in a case that is still
+   * being written — the Case Radar on the new-case screen.
+   *
+   * For each indicator: whether it was seen before and on how many cases, the
+   * last verdict reached on one (resolution and closing summary), and whether
+   * correlation would ignore it (whitelisted or noisy). Across all of them:
+   * open cases sharing any of the indicators that would link, which is what a
+   * duplicate looks like before it is created.
+   *
+   * Values are normalised here, never taken from the client as-is, and the
+   * whitelist and noise rules are the ones correlation itself applies — so the
+   * panel cannot promise a link that creating the case would not make.
+   */
+  async radar(items: RadarItemDto[]) {
+    const rules = await this.correlation.getWhitelist();
+
+    const wanted = new Map<string, { type: ObservableType; normalized: string }>();
+    for (const item of items) {
+      const result = normalizeObservable(item.type, item.value);
+      if (!result.ok) continue;
+      wanted.set(`${result.value.type}|${result.value.normalized}`, result.value);
+    }
+    if (wanted.size === 0) return { indicators: [], openCases: [] };
+
+    const known = await this.prisma.observable.findMany({
+      where: {
+        OR: [...wanted.values()].map((entry) => ({
+          type: entry.type,
+          normalizedValue: entry.normalized,
+        })),
+      },
+      select: {
+        type: true,
+        normalizedValue: true,
+        sightingCount: true,
+        isNoisy: true,
+        cases: {
+          where: { case: { deletedAt: null } },
+          orderBy: { addedAt: 'desc' },
+          take: 25,
+          select: {
+            case: {
+              select: {
+                id: true,
+                number: true,
+                title: true,
+                status: true,
+                severity: true,
+                resolution: true,
+                summary: true,
+                closedAt: true,
+                createdAt: true,
+                assignee: { select: { fullName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const byKey = new Map(known.map((row) => [`${row.type}|${row.normalizedValue}`, row]));
+
+    const openCases = new Map<
+      string,
+      {
+        caseId: string;
+        reference: string;
+        title: string;
+        status: string;
+        severity: string;
+        assignee: string | null;
+        shared: string[];
+      }
+    >();
+
+    const indicators = [...wanted.entries()].map(([key, entry]) => {
+      const row = byKey.get(key);
+      const whitelisted = this.correlation.isExcluded(entry, rules);
+      const noisy = row?.isNoisy ?? false;
+      const cases = row?.cases.map((link) => link.case) ?? [];
+
+      // Only an indicator correlation would act on can make a duplicate.
+      if (!whitelisted && !noisy) {
+        for (const found of cases) {
+          if (!OPEN_STATUSES.includes(found.status)) continue;
+          const existing = openCases.get(found.id) ?? {
+            caseId: found.id,
+            reference: formatCaseNumber(found.number, found.createdAt),
+            title: found.title,
+            status: found.status,
+            severity: found.severity,
+            assignee: found.assignee?.fullName ?? null,
+            shared: [],
+          };
+          existing.shared.push(entry.normalized);
+          openCases.set(found.id, existing);
+        }
+      }
+
+      const verdict = cases
+        .filter((found) => found.closedAt && found.resolution)
+        .sort((a, b) => b.closedAt!.getTime() - a.closedAt!.getTime())[0];
+
+      return {
+        type: entry.type,
+        value: entry.normalized,
+        sightings: row?.sightingCount ?? 0,
+        whitelisted,
+        noisy,
+        lastVerdict: verdict
+          ? {
+              caseId: verdict.id,
+              reference: formatCaseNumber(verdict.number, verdict.createdAt),
+              resolution: verdict.resolution!,
+              closedAt: verdict.closedAt!.toISOString(),
+              summary:
+                verdict.summary && verdict.summary.length > SUMMARY_PREVIEW
+                  ? `${verdict.summary.slice(0, SUMMARY_PREVIEW - 1).trimEnd()}…`
+                  : verdict.summary,
+            }
+          : null,
+        recent: cases.slice(0, 3).map((found) => ({
+          caseId: found.id,
+          reference: formatCaseNumber(found.number, found.createdAt),
+          title: found.title,
+          status: found.status,
+          severity: found.severity,
+        })),
+      };
+    });
+
+    return {
+      indicators,
+      // The case sharing the most indicators is the likeliest duplicate.
+      openCases: [...openCases.values()]
+        .sort((a, b) => b.shared.length - a.shared.length)
+        .slice(0, 3),
+    };
+  }
+
   async search(query: SearchObservablesDto) {
     const term = query.q ? refang(query.q).trim().toLowerCase() : '';
     const page = query.page ?? 1;

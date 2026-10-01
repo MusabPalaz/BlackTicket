@@ -5,7 +5,7 @@ import { CaseLinkType, Permission } from '@black-ticket/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Alert, Button, Card, Field, Input, cx } from '@/components/ui';
-import { SeverityChip, StatusChip } from '@/components/case-bits';
+import { ResolutionChip, SeverityChip, StatusChip } from '@/components/case-bits';
 import { useConfirm } from '@/components/ConfirmDialog';
 import type { CaseRecord, Paginated, RelatedCase } from './types';
 
@@ -180,11 +180,7 @@ export function CaseRelatedTab({ caseId, readOnly }: { caseId: string; readOnly:
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusChip value={entry.case.status} />
                 <SeverityChip value={entry.case.severity} />
-                {entry.case.resolution && (
-                  <span className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--color-content-muted)]">
-                    {entry.case.resolution.replace('_', ' ')}
-                  </span>
-                )}
+                {entry.case.resolution && <ResolutionChip value={entry.case.resolution} />}
               </div>
             </div>
             <span

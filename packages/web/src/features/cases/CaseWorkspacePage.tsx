@@ -11,6 +11,8 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Alert, Button, Card, cx } from '@/components/ui';
 import {
+  NeutralChip,
+  ResolutionChip,
   SeverityChip,
   StatusChip,
   TlpChip,
@@ -155,16 +157,8 @@ export function CaseWorkspacePage() {
             <SeverityChip value={record.severity} />
             <TlpChip value={record.tlp} />
             <TlpChip value={record.pap} label="PAP" />
-            {record.category && (
-              <span className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--color-content-muted)]">
-                {record.category.name}
-              </span>
-            )}
-            {record.resolution && (
-              <span className="rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[11px]">
-                {record.resolution.replace('_', ' ')}
-              </span>
-            )}
+            {record.category && <NeutralChip>{record.category.name}</NeutralChip>}
+            {record.resolution && <ResolutionChip value={record.resolution} />}
             <span
               className={cx(
                 'text-xs',

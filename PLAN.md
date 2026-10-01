@@ -424,6 +424,7 @@ PATCH  /case-observables/:id
 DELETE /case-observables/:id
 GET    /observables/search          ?q=1.2.3.4 → global search + which cases it appears on
 GET    /observables/:id/sightings
+POST   /observables/radar           { items: [{ type, value }] } → sightings, last verdict, open duplicates (Case Radar)
 ```
 
 ### MITRE

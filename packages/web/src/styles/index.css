@@ -40,6 +40,12 @@
   --color-tlp-amber: oklch(0.78 0.15 75);
   --color-tlp-red: oklch(0.62 0.23 25);
 
+  /* Chips that carry no colour of their own — a closed status, a category, a
+     resolution with no verdict. Defined apart from the border and muted text
+     they default to, so a theme can lift them without touching every border. */
+  --color-chip-border: var(--color-border-subtle);
+  --color-chip-text: var(--color-content-muted);
+
   /* Elevation. Three steps only — more than that and nothing reads as raised. */
   --shadow-card: 0 1px 2px oklch(0 0 0 / 0.3);
   --shadow-raised: 0 4px 12px oklch(0 0 0 / 0.35);
@@ -95,6 +101,11 @@
 
   --color-brand-rule: oklch(0.93 0.01 110 / 0.45);
   --color-brand-star: oklch(0.93 0.01 110 / 0.72);
+
+  /* On olive the default chip greys sank into the background; a light stone
+     reads clearly without borrowing the khaki accent. */
+  --color-chip-border: oklch(0.52 0.03 110);
+  --color-chip-text: oklch(0.86 0.02 105);
 }
 
 @layer base {
@@ -291,6 +302,20 @@
 }
 
 @layer utilities {
+  /* Case Radar's empty scope: one slow sweep, blips fading in behind it. */
+  .radar-sweep {
+    transform-origin: 100px 100px;
+    animation: radar-turn 4s linear infinite;
+  }
+
+  .radar-blip {
+    animation: radar-blip 4s ease-out infinite;
+  }
+
+  .radar-blip-late {
+    animation-delay: 2.2s;
+  }
+
   .animate-in {
     animation: fade-rise var(--duration-enter) var(--ease-out-soft);
   }
@@ -324,6 +349,27 @@
     opacity: 1;
   }
   50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Clockwise, so the faded wedge trails the leading edge. */
+@keyframes radar-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes radar-blip {
+  0%,
+  15% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  80%,
   100% {
     opacity: 0;
   }
