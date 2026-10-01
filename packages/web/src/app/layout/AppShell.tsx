@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BRANDING, Permission, detectObservableType } from '@black-ticket/shared';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePreferences } from '@/lib/preferences';
@@ -394,11 +394,19 @@ export function AppShell() {
         <div
           className={cx(
             // A floor, so the rail (mark only, no name) is as tall and the nav does not jump.
-            'flex min-h-[67px] shrink-0 items-center gap-2.5 border-b border-[var(--color-border-subtle)] py-4',
+            'flex min-h-[81px] shrink-0 items-center gap-2.5 border-b border-[var(--color-border-subtle)] py-4',
             rail ? 'justify-center' : 'px-5',
           )}
         >
-          <BrandMark size="sm" withText={!rail} />
+          {/* The mark goes home, as it does in nearly every application. */}
+          <Link
+            to="/"
+            title="Dashboard"
+            aria-label={`${BRANDING.productName} — dashboard`}
+            className="min-w-0 rounded-[var(--radius-control)]"
+          >
+            <BrandMark size="sm" withText={!rail} />
+          </Link>
           <button
             onClick={() => setDrawerOpen(false)}
             aria-label="Close navigation"
@@ -412,7 +420,7 @@ export function AppShell() {
           aria-label="Main"
           className={cx(
             'flex-1 space-y-0.5 overflow-x-hidden overflow-y-auto',
-            rail ? 'p-2' : 'p-3',
+            rail ? 'px-2 py-3' : 'p-3',
           )}
         >
           {work.map(link)}

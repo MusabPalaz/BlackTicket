@@ -45,8 +45,10 @@ export function BrandMark({
           <p className={cx('truncate leading-tight font-semibold tracking-tight', NAME_SIZE[size])}>
             {BRANDING.productName}
           </p>
+          {/* Wraps rather than truncating: cut off mid-word in the sidebar it
+              read as "IO…", which says nothing. */}
           {withTagline && (
-            <p className="truncate text-[11px] text-[var(--color-content-faint)]">
+            <p className="text-[11px] leading-snug text-[var(--color-content-faint)]">
               {BRANDING.tagline}
             </p>
           )}
