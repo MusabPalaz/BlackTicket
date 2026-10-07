@@ -112,8 +112,8 @@ screen.
 ## Updating
 
 ```bash
-./update.sh              # to the TAG in .env
-./update.sh v1.4.0       # to a specific release
+sh update.sh             # to the TAG in .env, or to an offline bundle's release
+sh update.sh v1.4.0      # to a specific release
 ```
 
 The order of the script is not accidental:

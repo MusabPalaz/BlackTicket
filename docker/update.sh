@@ -1,8 +1,11 @@
 #!/bin/sh
 # Update Black Ticket in place.
 #
-#   ./update.sh            # move to the tag in .env
-#   ./update.sh v1.4.0     # move to a specific tag
+#   sh update.sh           # move to the tag in .env, or to the bundle's release
+#   sh update.sh v1.4.0    # move to a specific tag
+#
+# Run through `sh`: a zip carries no execute permission, so `./update.sh`
+# straight out of an unpacked bundle fails with "Permission denied".
 #
 # The order matters and is the whole point of this script:
 #
@@ -24,6 +27,19 @@ cd "$(dirname "$0")"
 if [ ! -f .env ]; then
   echo "No .env here. Copy .env.example to .env and fill it in first." >&2
   exit 1
+fi
+
+# A release that arrives as a zip names itself: package.ps1 writes its tag into
+# the bundle's .env.example. The .env kept from the previous install still names
+# the old one, and without this `up -d` would quietly restart the old version
+# beside the freshly loaded new images.
+if [ $# -eq 0 ] && [ -d ./images ] && [ -f .env.example ]; then
+  bundled=$(sed -n 's/^TAG=//p' .env.example | tr -d '\r' | head -n 1)
+  current=$(sed -n 's/^TAG=//p' .env | tr -d '\r' | head -n 1)
+  if [ -n "$bundled" ] && [ "$bundled" != latest ] && [ "$bundled" != "$current" ]; then
+    echo "This bundle is $bundled; .env named ${current:-no version}."
+    set -- "$bundled"
+  fi
 fi
 
 if [ $# -ge 1 ]; then

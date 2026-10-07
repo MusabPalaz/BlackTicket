@@ -158,7 +158,7 @@ domain and lock it. Every account created after the lock must be in that domain.
 ## Updating
 
 ```bash
-./update.sh
+sh update.sh
 ```
 
 In order, the script **backs up first**, fetches the new images (from the
@@ -173,7 +173,12 @@ So if an update stops halfway, the application does not try to run against the
 old schema; it stops and tells you.
 
 When a new release reaches you as a zip: keep your `.env` and `certs/`, replace
-the rest of the bundle, and run `./update.sh`.
+the rest of the bundle, and run `sh update.sh`. The script takes the new version
+from the bundle and writes it into `.env` as `TAG`; to move to a particular
+release, name it: `sh update.sh v1.2.0`.
+
+Run it through `sh` as shown: a zip does not keep the execute permission, so
+`./update.sh` straight out of an unpacked bundle fails with "Permission denied".
 
 ---
 
