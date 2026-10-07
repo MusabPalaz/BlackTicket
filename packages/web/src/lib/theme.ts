@@ -23,6 +23,12 @@ export const THEMES = [
     description: 'Command centre: olive, khaki and digital camouflage',
     swatch: 'linear-gradient(135deg, oklch(0.32 0.06 135) 25%, oklch(0.8 0.07 95))',
   },
+  {
+    id: 'navy',
+    label: 'Navy',
+    description: 'A lighter dark: deep navy, white and ice blue',
+    swatch: 'linear-gradient(135deg, oklch(0.3 0.055 258) 25%, oklch(0.94 0.04 235))',
+  },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];

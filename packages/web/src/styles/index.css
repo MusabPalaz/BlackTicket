@@ -108,6 +108,43 @@
   --color-chip-text: oklch(0.86 0.02 105);
 }
 
+/*
+ * Navy theme: a lighter dark — deep navy instead of near-black, white text.
+ *
+ * The accent is ice, near white, rather than a blue: on a blue ground a blue
+ * accent loses its contrast, and a saturated light blue would sit beside LOW
+ * severity's cyan and read as the same thing. Severity and TLP, as always,
+ * stay put.
+ */
+:root[data-theme='navy'] {
+  --color-surface: oklch(0.255 0.05 258);
+  --color-surface-raised: oklch(0.3 0.055 258);
+  --color-surface-overlay: oklch(0.345 0.058 257);
+  --color-surface-hover: oklch(0.38 0.06 256);
+
+  --color-border-subtle: oklch(0.42 0.05 256);
+  --color-border-strong: oklch(0.53 0.05 254);
+
+  --color-content: oklch(0.97 0.008 250);
+  --color-content-muted: oklch(0.82 0.03 250);
+  --color-content-faint: oklch(0.69 0.035 252);
+
+  --color-accent: oklch(0.9 0.055 235);
+  --color-accent-strong: oklch(0.95 0.04 235);
+  --color-accent-soft: oklch(0.9 0.055 235 / 0.16);
+
+  --color-brand-rule: oklch(0.97 0.008 250 / 0.45);
+  --color-brand-star: oklch(0.97 0.008 250 / 0.72);
+
+  --color-chip-border: oklch(0.6 0.04 250);
+  --color-chip-text: oklch(0.9 0.02 245);
+
+  /* A lighter ground needs softer shadows, or every card looks cut out. */
+  --shadow-card: 0 1px 2px oklch(0.12 0.04 258 / 0.35);
+  --shadow-raised: 0 4px 12px oklch(0.12 0.04 258 / 0.4);
+  --shadow-overlay: 0 12px 32px oklch(0.1 0.04 258 / 0.5);
+}
+
 @layer base {
   html,
   body,
