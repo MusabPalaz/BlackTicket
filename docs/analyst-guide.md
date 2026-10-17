@@ -26,7 +26,10 @@ Without SSO you sign in with a username and password:
   outside which accounts have 2FA.
 - You can also type one of your recovery codes in place of the six digits.
 
-After five wrong attempts the account is locked for 15 minutes. Every sign-in —
+After five wrong attempts the account is locked for 15 minutes. While it is
+locked the screen keeps saying the username or password is wrong, even for the
+right password — otherwise the lock would tell an attacker when a guess was
+correct. Wait the 15 minutes, or ask an administrator. Every sign-in —
 successful or not — is written to the audit log.
 
 ---

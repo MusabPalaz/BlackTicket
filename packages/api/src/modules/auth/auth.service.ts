@@ -70,6 +70,26 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Invalid username or password');
     }
 
+    /*
+     * A locked account is refused before its password is looked at, and in
+     * the same words and time as a wrong one. Checking the password first made
+     * the lock an oracle: a guess during the lockout still came back "locked"
+     * when right and "invalid" when wrong, so the lock slowed nobody down.
+     */
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      await this.passwords.verify(this.decoyHash, password);
+      await this.audit.record({
+        action: AuditAction.LOGIN_FAILURE,
+        entityType: 'User',
+        entityId: user.id,
+        actorId: user.id,
+        actorIp: context.ip,
+        actorUserAgent: context.userAgent,
+        metadata: { username, reason: 'LOCKED' },
+      });
+      throw new UnauthorizedException('Invalid username or password');
+    }
+
     const passwordOk = await this.passwords.verifyLocal(user.passwordHash, password);
 
     if (!passwordOk) {
@@ -102,12 +122,6 @@ export class AuthService implements OnModuleInit {
 
     // Password is correct from here on, so specific messages no longer leak
     // anything an attacker does not already know.
-    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
-      throw new UnauthorizedException(
-        `Account is locked until ${user.lockedUntil.toISOString()} after repeated failed sign-ins.`,
-      );
-    }
-
     if (user.status === 'DISABLED') {
       throw new ForbiddenException('Account is disabled. Contact an administrator.');
     }
