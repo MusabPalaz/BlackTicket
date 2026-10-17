@@ -66,6 +66,9 @@ services:
       # One origin, so this is the same host the browser is on.
       CORS_ORIGINS: https://${PUBLIC_HOST}
       WEB_BASE_URL: https://${PUBLIC_HOST}
+      # Caddy is the one proxy in front of the API and the only way to it, so
+      # the client address it forwards is believed and nothing further back.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required}

@@ -42,6 +42,31 @@ const envSchema = z.object({
    */
   WEB_BASE_URL: z.string().url().default('http://localhost:5173'),
 
+  /**
+   * Which proxies in front of the API to believe about the client's address,
+   * in Express's own terms: a hop count, or a list of addresses and subnets.
+   *
+   * Without it, an API behind a reverse proxy sees every request arrive from
+   * the proxy: the sign-in limits count the whole organisation as one client
+   * and the audit trail records the proxy's address for everyone. Off by
+   * default because an API reached directly would then believe whatever
+   * X-Forwarded-For a client chose to send. The bundled compose file sets 1,
+   * for the one Caddy in front of it.
+   */
+  TRUST_PROXY: z
+    .string()
+    .default('false')
+    .transform((value) => value.trim())
+    .refine((value) => value !== 'true', {
+      message:
+        'TRUST_PROXY=true would believe any client\'s X-Forwarded-For. Give the number of proxies in front of the API (1 behind the bundled Caddy) or their addresses.',
+    })
+    .transform((value): boolean | number | string => {
+      if (value === '' || value === 'false') return false;
+      if (/^\d+$/.test(value)) return Number(value);
+      return value;
+    }),
+
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_ACCESS_TTL: z.string().default('15m'),
