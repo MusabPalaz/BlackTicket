@@ -22,6 +22,12 @@ export interface FederatedIdentity {
   subject: string;
   username: string;
   email: string;
+  /**
+   * Whether the provider vouches that the address belongs to this person.
+   * `null` when it says nothing either way: Entra sends no such claim, and
+   * there the address is set by the directory's administrators, not the user.
+   */
+  emailVerified: boolean | null;
   fullName: string;
   groups: string[];
 }
@@ -108,6 +114,15 @@ export class SsoProvisioningService {
     identity: FederatedIdentity,
     context: ProvisionContext,
   ): Promise<void> {
+    /*
+     * The break-glass account exists for the day the provider is unreachable,
+     * so the provider is never a way into it: not through an address that
+     * happens to match, and not through a link made before this rule existed.
+     */
+    if (user.isRecoveryAccount) {
+      await this.deny(identity, context, 'RECOVERY_ACCOUNT');
+      throw new ForbiddenException('This account cannot be signed in to with single sign-on.');
+    }
     if (user.deletedAt) {
       await this.deny(identity, context, 'ACCOUNT_DELETED');
       throw new ForbiddenException('This account has been removed.');
@@ -115,6 +130,45 @@ export class SsoProvisioningService {
     if (user.status === 'DISABLED') {
       await this.deny(identity, context, 'ACCOUNT_DISABLED');
       throw new ForbiddenException('This account is disabled in Black Ticket.');
+    }
+  }
+
+  /**
+   * Matching by address is what lets an account made by hand, by CSV or by
+   * SCIM meet its directory identity on the first sign-in. It is also the one
+   * step where the provider's word about an address decides which account a
+   * person gets, so an equal address alone is not enough.
+   */
+  private async assertLinkable(
+    user: User,
+    identity: FederatedIdentity,
+    context: ProvisionContext,
+  ): Promise<void> {
+    /*
+     * The account already belongs to another subject at this provider. The
+     * subject is stable and the address is not, so a second identity arriving
+     * with the same address is either a directory account that was recreated,
+     * which an administrator should look at, or somebody who set their address
+     * to another person's. Neither is resolved by moving the link. A link to a
+     * different issuer is moved: that is the tenant changing providers, and no
+     * user can choose the issuer.
+     */
+    if (user.externalIssuer === identity.issuer && user.externalId !== null) {
+      await this.deny(identity, context, 'LINKED_TO_OTHER_IDENTITY');
+      throw new ForbiddenException(
+        'This address belongs to an account linked to a different directory identity. Ask an administrator.',
+      );
+    }
+
+    /*
+     * Where people edit their own address, as a Keycloak realm lets them by
+     * default, an unverified one is only something they typed.
+     */
+    if (identity.emailVerified === false) {
+      await this.deny(identity, context, 'EMAIL_NOT_VERIFIED');
+      throw new ForbiddenException(
+        'The identity provider has not verified your e-mail address, so it cannot be matched to an existing account. Ask an administrator.',
+      );
     }
   }
 
@@ -126,9 +180,17 @@ export class SsoProvisioningService {
   ): Promise<User> {
     await this.assertUsable(user, identity, context);
 
+    /*
+     * A changed address is taken over only if the provider has not disowned
+     * it. An unverified one would let somebody park their account on a
+     * colleague's address before that colleague ever signed in.
+     */
+    const email =
+      next.email !== user.email && identity.emailVerified === false ? user.email : next.email;
+
     const role = await this.roleToApply(user, next.role);
     const changed =
-      user.email !== next.email ||
+      user.email !== email ||
       user.fullName !== identity.fullName ||
       user.role !== role ||
       user.status !== 'ACTIVE';
@@ -136,7 +198,7 @@ export class SsoProvisioningService {
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        email: next.email,
+        email,
         fullName: identity.fullName || user.fullName,
         role,
         // A locked-out account clears on a successful federated sign-in: the
@@ -177,6 +239,7 @@ export class SsoProvisioningService {
     context: ProvisionContext,
   ): Promise<User> {
     await this.assertUsable(user, identity, context);
+    await this.assertLinkable(user, identity, context);
 
     const role = await this.roleToApply(user, next.role);
     const updated = await this.prisma.user.update({
@@ -254,16 +317,7 @@ export class SsoProvisioningService {
   private async roleToApply(user: User, requested: Role): Promise<Role> {
     if (user.role === requested) return requested;
 
-    /*
-     * The break-glass account's role is absolute — a directory group rename
-     * must never be able to take the last way back in.
-     */
-    if (user.isRecoveryAccount) {
-      this.logger.warn(
-        `Directory asked for role ${requested} on the recovery account ${user.username}; kept ${user.role}.`,
-      );
-      return user.role;
-    }
+    // The break-glass account never gets here: assertUsable refuses it.
 
     if (user.role === Role.ADMIN && requested !== Role.ADMIN) {
       const otherAdmins = await this.prisma.user.count({
