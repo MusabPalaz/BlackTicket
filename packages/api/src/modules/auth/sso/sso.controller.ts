@@ -11,14 +11,25 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 import { Public } from '../../../common/decorators/auth.decorators';
 import { OidcService } from './oidc.service';
 import { SsoExchangeDto } from './dto/sso.dto';
-import { SsoService, type RequestContext } from './sso.service';
+import { ATTEMPT_TTL_MS, SsoService, type RequestContext } from './sso.service';
 
 function contextOf(request: Request): RequestContext {
   return { ip: request.ip ?? null, userAgent: request.get('user-agent') ?? null };
+}
+
+/** One cookie's value from the raw header; nothing else here reads cookies. */
+function readCookie(request: Request, name: string): string | null {
+  for (const pair of (request.headers.cookie ?? '').split(';')) {
+    const separator = pair.indexOf('=');
+    if (separator !== -1 && pair.slice(0, separator).trim() === name) {
+      return pair.slice(separator + 1).trim() || null;
+    }
+  }
+  return null;
 }
 
 @ApiTags('auth')
@@ -52,7 +63,10 @@ export class SsoController {
     @Res() response: Response,
   ): Promise<void> {
     try {
-      response.redirect(await this.sso.start(returnTo, contextOf(request)));
+      const { url, binding } = await this.sso.start(returnTo, contextOf(request));
+      const cookie = this.bindingCookie();
+      response.cookie(cookie.name, binding, { ...cookie.options, maxAge: ATTEMPT_TTL_MS });
+      response.redirect(url);
     } catch (error) {
       response.redirect(this.failureUrl(error));
     }
@@ -63,7 +77,8 @@ export class SsoController {
   @ApiExcludeEndpoint()
   async callback(@Req() request: Request, @Res() response: Response): Promise<void> {
     try {
-      response.redirect(await this.sso.callback(request.originalUrl, contextOf(request)));
+      const binding = readCookie(request, this.bindingCookie().name);
+      response.redirect(await this.sso.callback(request.originalUrl, binding, contextOf(request)));
     } catch (error) {
       /*
        * The caller is a browser tab mid-redirect, so a failure has to land
@@ -81,8 +96,37 @@ export class SsoController {
   @Post('exchange')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Trade the one-time handoff code for a token pair' })
-  exchange(@Body() dto: SsoExchangeDto, @Req() request: Request) {
-    return this.sso.exchange(dto.code, contextOf(request));
+  async exchange(
+    @Body() dto: SsoExchangeDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const cookie = this.bindingCookie();
+    const result = await this.sso.exchange(
+      dto.code,
+      readCookie(request, cookie.name),
+      contextOf(request),
+    );
+    // The attempt is spent; the cookie would only linger until it expired.
+    response.clearCookie(cookie.name, cookie.options);
+    return result;
+  }
+
+  /**
+   * The cookie tying a sign-in to the browser that started it.
+   *
+   * `__Host-` stops a sibling subdomain from planting a value of its own, which
+   * is exactly what forcing someone into another person's sign-in would take.
+   * The prefix demands Secure, so a plain-http development setup gets an
+   * unprefixed name instead. Lax, because the provider sends the browser back
+   * with a top-level GET, which Lax lets through.
+   */
+  private bindingCookie(): { name: string; options: CookieOptions } {
+    const secure = new URL(this.oidc.webBaseUrl()).protocol === 'https:';
+    return {
+      name: secure ? '__Host-bt_sso' : 'bt_sso',
+      options: { httpOnly: true, secure, sameSite: 'lax', path: '/' },
+    };
   }
 
   private failureUrl(error: unknown): string {
