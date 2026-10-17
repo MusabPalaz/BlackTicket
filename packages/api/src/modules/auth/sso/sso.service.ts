@@ -266,6 +266,9 @@ export class SsoService {
       subject: String(claims.sub),
       username: username ?? email,
       email,
+      // `xms_edov` is Entra's optional "domain owner verified" claim, there
+      // only when the app registration asks for it.
+      emailVerified: booleanClaim(merged, 'email_verified') ?? booleanClaim(merged, 'xms_edov'),
       fullName: stringClaim(merged, 'name') ?? '',
       groups: stringArrayClaim(merged, oidc.groupsClaim),
     };
@@ -283,6 +286,14 @@ export class SsoService {
 function stringClaim(claims: Record<string, unknown>, key: string): string | null {
   const value = claims[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** Some providers send booleans as the strings "true" and "false". */
+function booleanClaim(claims: Record<string, unknown>, key: string): boolean | null {
+  const value = claims[key];
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === 'false') return value === 'true';
+  return null;
 }
 
 function stringArrayClaim(claims: Record<string, unknown>, key: string): string[] {

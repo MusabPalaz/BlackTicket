@@ -110,6 +110,19 @@ The screen **refuses to enable SSO if there is no active recovery account.** Oth
 a wrong issuer, an expired client secret or an outage at the provider would leave a
 system nobody can sign in to and nobody can roll back.
 
+**Existing accounts.** On someone's first SSO sign-in, an account that already exists
+here (made by hand, by CSV or by SCIM) is matched to them by e-mail address. Three
+cases are refused, each written to the audit log with its reason:
+
+- **The recovery account** is never reached through SSO, whatever address the
+  provider sends. It signs in with its own password only.
+- **An account already linked to another identity at the same provider**
+  (`LINKED_TO_OTHER_IDENTITY`). Usually a directory account that was deleted and
+  recreated; it is not moved to the new identity automatically.
+- **An address the provider says it has not verified** (`EMAIL_NOT_VERIFIED`). In
+  Keycloak, mark the user's e-mail as verified, or turn on e-mail verification for
+  the realm. Entra sends no verification claim and is not affected.
+
 > **Keep the recovery account's password outside this system, somewhere your team
 > can reach.** Unlocking the domain needs it too.
 
