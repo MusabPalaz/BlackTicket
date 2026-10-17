@@ -23,13 +23,23 @@ import { OidcService, requireOidc } from './oidc.service';
 import { SsoProvisioningService, type FederatedIdentity } from './sso-provisioning.service';
 
 /** A sign-in has to be finished promptly; the row is a bearer credential. */
-const ATTEMPT_TTL_MS = 10 * 60 * 1000;
+export const ATTEMPT_TTL_MS = 10 * 60 * 1000;
 /** The browser exchanges the handoff immediately on landing. */
 const HANDOFF_TTL_MS = 60 * 1000;
 
 export interface RequestContext {
   ip: string | null;
   userAgent: string | null;
+}
+
+export interface SsoStart {
+  /** The provider's authorization endpoint, with this attempt's parameters. */
+  url: string;
+  /**
+   * For a cookie on the browser that asked. Both later legs have to present
+   * it, so a sign-in cannot be started in one browser and finished in another.
+   */
+  binding: string;
 }
 
 function sha256(value: string): string {
@@ -44,6 +54,10 @@ function sha256(value: string): string {
  * that code for the ordinary access/refresh pair the rest of the application
  * already understands. Nothing downstream of `TokenService` learns that SSO
  * exists — which is what keeps guards, refresh and logout untouched.
+ *
+ * Every leg is tied to the browser that began it by a value held in a cookie,
+ * the one cookie this application sets. The state parameter alone proves only
+ * that *some* browser started the attempt, not that this one did.
  */
 @Injectable()
 export class SsoService {
@@ -79,7 +93,7 @@ export class SsoService {
     return policy;
   }
 
-  async start(returnTo: string | undefined, context: RequestContext): Promise<string> {
+  async start(returnTo: string | undefined, context: RequestContext): Promise<SsoStart> {
     const policy = await this.policyOrThrow();
     const oidc = requireOidc(policy);
     const configuration = await this.oidc.configurationFor(oidc);
@@ -88,10 +102,12 @@ export class SsoService {
     const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
     const state = client.randomState();
     const nonce = client.randomNonce();
+    const binding = randomBytes(32).toString('base64url');
 
     await this.prisma.ssoLoginAttempt.create({
       data: {
         stateHash: sha256(state),
+        bindingHash: sha256(binding),
         codeVerifier,
         nonce,
         returnTo: safeReturnTo(returnTo),
@@ -101,16 +117,16 @@ export class SsoService {
       },
     });
 
-    return client
-      .buildAuthorizationUrl(configuration, {
-        redirect_uri: oidc.redirectUri,
-        scope: oidc.scopes.join(' '),
-        state,
-        nonce,
-        code_challenge: codeChallenge,
-        code_challenge_method: 'S256',
-      })
-      .href;
+    const url = client.buildAuthorizationUrl(configuration, {
+      redirect_uri: oidc.redirectUri,
+      scope: oidc.scopes.join(' '),
+      state,
+      nonce,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    }).href;
+
+    return { url, binding };
   }
 
   /**
@@ -120,7 +136,7 @@ export class SsoService {
    * and a raw 500 in a browser tab is a dead end for someone who only wanted
    * to sign in.
    */
-  async callback(rawUrl: string, context: RequestContext): Promise<string> {
+  async callback(rawUrl: string, binding: string | null, context: RequestContext): Promise<string> {
     const policy = await this.policyOrThrow();
     const oidc = requireOidc(policy);
 
@@ -140,6 +156,8 @@ export class SsoService {
     if (!attempt || attempt.consumedAt || attempt.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedException('This sign-in attempt is no longer valid. Start again.');
     }
+    // Before the code is redeemed: a leg from the wrong browser gets nothing.
+    assertSameBrowser(attempt, binding);
 
     const configuration = await this.oidc.configurationFor(oidc);
 
@@ -171,7 +189,7 @@ export class SsoService {
   }
 
   /** Trades the single-use handoff for the application's own token pair. */
-  async exchange(code: string, context: RequestContext) {
+  async exchange(code: string, binding: string | null, context: RequestContext) {
     const attempt = await this.prisma.ssoLoginAttempt.findUnique({
       where: { handoffHash: sha256(code) },
     });
@@ -183,6 +201,7 @@ export class SsoService {
     ) {
       throw new UnauthorizedException('This sign-in code is no longer valid. Start again.');
     }
+    assertSameBrowser(attempt, binding);
 
     /*
      * Consumed with a conditional update rather than a read-then-write: two
@@ -286,6 +305,23 @@ export class SsoService {
 function stringClaim(claims: Record<string, unknown>, key: string): string | null {
   const value = claims[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * Refuses a leg arriving from a browser other than the one that started the
+ * sign-in.
+ *
+ * Without it, someone could complete a sign-in as themselves and send the link
+ * on: whoever opened it would be working in that account, and every note and
+ * indicator they typed would be recorded under somebody else's name. An
+ * attempt from before the binding existed has none, and is started again.
+ */
+function assertSameBrowser(attempt: { bindingHash: string | null }, binding: string | null): void {
+  if (!attempt.bindingHash || !binding || sha256(binding) !== attempt.bindingHash) {
+    throw new UnauthorizedException(
+      'This sign-in was not started in this browser. Start again from the sign-in page.',
+    );
+  }
 }
 
 /** Some providers send booleans as the strings "true" and "false". */

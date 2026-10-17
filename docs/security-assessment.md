@@ -101,11 +101,16 @@ in the environment, not in the database. **Logs are redacted**: the `authorizati
 `x-api-key`, `cookie`, `password`, `currentPassword`, `newPassword`, `totpCode` and
 `refreshToken` fields never reach the log. The SSO handoff code appears in the URL,
 but it is **single-use and valid for 60 seconds**; once consumed it is worthless, and
-the interface removes it from the address bar.
+the interface removes it from the address bar. It is also **bound to the browser that
+started the sign-in** (an HttpOnly `__Host-` cookie, checked on the provider's callback
+and on the exchange), so a link to someone else's half-finished sign-in signs nobody
+in.
 
 ### V13 — API
 JSON only. CORS `credentials: false` and a single origin in the deployment — **CSRF is
-not applicable** (no cookies; bearer tokens). Machine endpoints are protected by API
+not applicable** (no session cookies; bearer tokens). The one cookie, the SSO sign-in
+binding above, authenticates nothing on its own: it only proves a sign-in leg came
+from the browser that began it. Machine endpoints are protected by API
 keys with **scope** separation: a key that submits alerts cannot create accounts.
 SCIM has its own rate limit.
 

@@ -753,7 +753,7 @@ model OutboundEmail {
 
 /// One federated sign-in attempt, from the redirect out to the token handoff.
 ///
-/// This table exists because the application keeps no cookies at all - CORS
+/// This table exists because the application keeps no session cookies - CORS
 /// runs with credentials disabled and the client is pure bearer-token - so the
 /// PKCE verifier and the one-time handoff code need somewhere server-side to
 /// live between the two legs of the flow. Rows are short-lived and swept.
@@ -765,6 +765,11 @@ model SsoLoginAttempt {
   stateHash    String @unique
   codeVerifier String
   nonce        String
+
+  /// SHA-256 of the value in the cookie set on the browser that started the
+  /// attempt. Both later legs must present it. Null only on rows from before
+  /// it existed, which are refused and started again.
+  bindingHash String?
 
   /// Where to land afterwards, when the sign-in started from a deep link.
   returnTo String?

@@ -123,6 +123,9 @@ cases are refused, each written to the audit log with its reason:
   Keycloak, mark the user's e-mail as verified, or turn on e-mail verification for
   the realm. Entra sends no verification claim and is not affected.
 
+A sign-in also has to finish in the browser it started in. Someone who copies the
+link halfway through and opens it elsewhere is asked to start again.
+
 > **Keep the recovery account's password outside this system, somewhere your team
 > can reach.** Unlocking the domain needs it too.
 
