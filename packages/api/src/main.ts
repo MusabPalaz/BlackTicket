@@ -16,6 +16,9 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService<AppEnv, true>);
   const isProduction = config.get('NODE_ENV', { infer: true }) === 'production';
 
+  // Before anything reads request.ip: the rate limits, the audit trail.
+  app.set('trust proxy', config.get('TRUST_PROXY', { infer: true }));
+
   app.use(
     helmet({
       contentSecurityPolicy: {
