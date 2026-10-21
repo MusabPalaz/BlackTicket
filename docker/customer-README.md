@@ -163,7 +163,8 @@ sh update.sh
 
 In order, the script **backs up first**, fetches the new images (from the
 registry or from the `images/` folder), updates the database schema, then
-restarts the application and confirms that it is healthy.
+restarts the application and confirms that it is healthy. Once signed in, the
+foot of the sidebar shows the release now running, e.g. `Black Ticket v1.4.0`.
 
 Backing up first is deliberate: if a release causes trouble, the way back is a
 restore, and a backup taken *after* the schema was updated is no way back.

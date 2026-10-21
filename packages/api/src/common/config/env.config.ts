@@ -10,6 +10,12 @@ import { z } from 'zod';
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * The release this server is, shown at the foot of the sidebar. The compose
+   * file sets it from TAG: the image tag is what decides which release runs,
+   * so the two cannot disagree. Unset in development.
+   */
+  APP_VERSION: z.string().trim().min(1).max(64).default('dev'),
 
   API_PORT: z.coerce.number().int().positive().default(3000),
   API_PREFIX: z.string().startsWith('/').default('/api/v1'),
