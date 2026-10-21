@@ -28,3 +28,13 @@ describe('TRUST_PROXY', () => {
     expect(() => validateEnv({ ...required, TRUST_PROXY: 'true' })).toThrow(/X-Forwarded-For/);
   });
 });
+
+describe('APP_VERSION', () => {
+  it('reads as dev when nothing sets it', () => {
+    expect(validateEnv(required).APP_VERSION).toBe('dev');
+  });
+
+  it('carries the release the compose file passes in', () => {
+    expect(validateEnv({ ...required, APP_VERSION: ' v1.4.0 ' }).APP_VERSION).toBe('v1.4.0');
+  });
+});

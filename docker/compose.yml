@@ -59,6 +59,8 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      # The image tag is the release; the sidebar shows it to signed-in users.
+      APP_VERSION: ${TAG:-latest}
       API_PORT: '3000'
       API_PREFIX: /api/v1
       DATABASE_URL: postgresql://${POSTGRES_USER:-blackticket}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-blackticket}

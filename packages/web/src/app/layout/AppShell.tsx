@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { BRANDING, Permission, detectObservableType } from '@black-ticket/shared';
+import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePreferences } from '@/lib/preferences';
 import { DEFAULT_THEME, isThemeId, setTheme } from '@/lib/theme';
@@ -189,6 +191,11 @@ function writeCollapsed(collapsed: boolean): void {
   }
 }
 
+/** "1.4.0" and "v1.4.0" both read as v1.4.0; "dev" or "latest" stay as they are. */
+function releaseLabel(version: string): string {
+  return /^\d/.test(version) ? `v${version}` : version;
+}
+
 function titleForPath(pathname: string): string {
   if (pathname === '/') return 'Dashboard';
   if (pathname.startsWith('/profile')) return 'Your Account';
@@ -224,6 +231,16 @@ export function AppShell() {
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
+
+  // Asked once per page load: a new release arrives with new assets, which
+  // need a reload anyway. If it cannot be read the line is simply left out.
+  const about = useQuery({
+    queryKey: ['about'],
+    queryFn: () => api.get<{ version: string }>('/about'),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const release = about.data ? releaseLabel(about.data.version) : null;
 
   const visible = NAV_ITEMS.filter((item) => !item.permission || hasPermission(item.permission));
   const work = visible.filter((item) => item.section === 'work');
@@ -451,22 +468,27 @@ export function AppShell() {
             rail ? 'flex-col gap-1 py-2' : 'gap-2 py-2 pr-2 pl-5',
           )}
         >
-          <button
-            onClick={() => setHelpOpen(true)}
-            title="Keyboard shortcuts (?)"
-            className={cx(
-              'text-left text-xs text-[var(--color-content-faint)] hover:text-[var(--color-content-muted)]',
-              !rail && 'flex-1',
+          <div className={cx('min-w-0', !rail && 'flex-1')}>
+            <button
+              onClick={() => setHelpOpen(true)}
+              title="Keyboard shortcuts (?)"
+              className="text-left text-xs text-[var(--color-content-faint)] hover:text-[var(--color-content-muted)]"
+            >
+              {rail ? (
+                <kbd>?</kbd>
+              ) : (
+                <>
+                  Press <kbd>?</kbd> for keyboard shortcuts
+                </>
+              )}
+            </button>
+            {/* Which release this is: the first question in any support call. */}
+            {release && !rail && (
+              <p className="mt-0.5 truncate text-[11px] text-[var(--color-content-faint)] tabular-nums">
+                {BRANDING.productName} {release}
+              </p>
             )}
-          >
-            {rail ? (
-              <kbd>?</kbd>
-            ) : (
-              <>
-                Press <kbd>?</kbd> for keyboard shortcuts
-              </>
-            )}
-          </button>
+          </div>
           {/* The drawer on narrow screens is already dismissable; collapsing
               only means something for the permanent sidebar. */}
           <button
@@ -478,6 +500,14 @@ export function AppShell() {
           >
             <IconSidebar className="h-4 w-4" />
           </button>
+          {release && rail && (
+            <p
+              title={`${BRANDING.productName} ${release}`}
+              className="w-full truncate px-1 text-center text-[10px] text-[var(--color-content-faint)] tabular-nums"
+            >
+              {release}
+            </p>
+          )}
         </div>
       </div>
     );
