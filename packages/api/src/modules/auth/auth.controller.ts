@@ -1,13 +1,27 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import type { User } from '@prisma/client';
 import {
   AllowPendingPasswordChange,
   CurrentUser,
   Public,
 } from '../../common/decorators/auth.decorators';
-import { LoginThrottleGuard } from '../../common/guards/login-throttle.guard';
+import {
+  LOGIN_CREDENTIAL_FAILURE,
+  LoginThrottleGuard,
+} from '../../common/guards/login-throttle.guard';
 import { ReauthThrottleGuard } from '../../common/guards/reauth-throttle.guard';
 import type { RequestWithUser } from '../../common/types/request.types';
 import { UsersService } from '../users/users.service';
@@ -25,6 +39,18 @@ function contextOf(request: Request): RequestContext {
   return { ip: request.ip ?? null, userAgent: request.get('user-agent') ?? null };
 }
 
+/**
+ * A refusal that says the credentials were wrong. A correct password that is
+ * only waiting for its second factor, or that belongs on the SSO screen, is
+ * not one: an office signing in at the start of a shift sends plenty of those.
+ */
+function isCredentialFailure(error: unknown): boolean {
+  if (!(error instanceof UnauthorizedException)) return false;
+  const body = error.getResponse();
+  const code = typeof body === 'object' && body !== null ? (body as { code?: unknown }).code : null;
+  return code !== 'TOTP_REQUIRED' && code !== 'SSO_REQUIRED';
+}
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -35,8 +61,17 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in with username, password and optional TOTP code' })
-  login(@Body() dto: LoginDto, @Req() request: Request) {
-    return this.auth.login(dto.username, dto.password, dto.totpCode, contextOf(request));
+  async login(
+    @Body() dto: LoginDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      return await this.auth.login(dto.username, dto.password, dto.totpCode, contextOf(request));
+    } catch (error) {
+      if (isCredentialFailure(error)) response.locals[LOGIN_CREDENTIAL_FAILURE] = true;
+      throw error;
+    }
   }
 
   @Public()

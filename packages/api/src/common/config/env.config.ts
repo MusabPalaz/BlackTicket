@@ -87,6 +87,8 @@ const envSchema = z.object({
 
   RATE_LIMIT_GLOBAL_PER_MIN: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_LOGIN_PER_MIN: z.coerce.number().int().positive().default(10),
+  /** Failed sign-ins from one address across every username: password spraying. */
+  RATE_LIMIT_LOGIN_FAILURES_PER_IP_PER_MIN: z.coerce.number().int().positive().default(20),
   /** Password re-checks inside a session: change password, disable 2FA,
    *  unlock the organisation domain. Counted per account. */
   RATE_LIMIT_REAUTH_PER_MIN: z.coerce.number().int().positive().default(10),
