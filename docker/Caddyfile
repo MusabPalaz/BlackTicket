@@ -36,7 +36,12 @@ https://{$PUBLIC_HOST}:443 {
 		reverse_proxy api:3000
 	}
 
+	# The application document needs its own policy: helmet sets one on the
+	# API's responses, but the page the scripts actually run in comes from
+	# nginx. Scripts only from this origin is what keeps an injected tag inert.
+	# Inline styles stay allowed for the style attributes the interface sets.
 	handle {
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		reverse_proxy web:80
 	}
 }
