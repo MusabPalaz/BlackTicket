@@ -273,7 +273,8 @@ export class UsersAdminService {
         ...(input.fullName !== undefined ? { fullName: input.fullName.trim() } : {}),
         email,
         ...(input.role !== undefined ? { role: input.role } : {}),
-        ...(input.status !== undefined ? { status: input.status } : {}),
+        // An administrator's decision, so the directory can no longer undo it.
+        ...(input.status !== undefined ? { status: input.status, disabledByDirectory: false } : {}),
         ...(input.tags !== undefined ? { tags: UsersAdminService.normaliseTags(input.tags) } : {}),
       },
     });
@@ -327,6 +328,7 @@ export class UsersAdminService {
       where: { id },
       data: {
         status: enabled ? 'ACTIVE' : 'DISABLED',
+        disabledByDirectory: false,
         ...(enabled ? { failedLoginCount: 0, lockedUntil: null } : {}),
       },
     });

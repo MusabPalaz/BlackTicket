@@ -161,6 +161,10 @@ model User {
   /// from externalId: an OIDC subject and a SCIM externalId are different
   /// identifiers for the same human, and Entra issues both.
   scimExternalId   String?
+  /// True when the directory disabled this account over SCIM. SCIM may turn
+  /// back on only what it turned off itself; an account an administrator
+  /// disabled here stays disabled whatever the directory sends.
+  disabledByDirectory Boolean @default(false)
 
   /// The break-glass administrator. Cannot be deleted, disabled or moved off
   /// ADMIN by anyone, so a mistake elsewhere can never leave the system with

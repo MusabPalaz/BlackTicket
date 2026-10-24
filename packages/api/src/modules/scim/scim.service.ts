@@ -30,6 +30,8 @@ export interface ScimActor {
   userAgent: string | null;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Entra never sends more than 100 at a time; the cap is defensive. */
 const MAX_PAGE = 200;
 
@@ -41,6 +43,13 @@ const MAX_PAGE = 200;
  * take away the break-glass account, or deactivate the last administrator.
  * Both would leave an organisation locked out of its own SOC platform because
  * of an HR record change.
+ *
+ * Nor does it override what an administrator decided here. An account disabled
+ * in Black Ticket is not switched back on because the directory still lists the
+ * person, and an address is only rewritten on an account the directory owns:
+ * moving a local account's address would decide which person a later
+ * federated sign-in, matched by address, lands in. The break-glass account is
+ * not visible over SCIM at all.
  *
  * Nothing here deletes. Cases carry `reporterId` and `assigneeId`; removing the
  * row behind a year of investigations to reflect a leaver would destroy the
@@ -92,7 +101,10 @@ export class ScimService {
     const startIndex = Math.max(1, Number(query.startIndex ?? 1) || 1);
     const count = Math.min(MAX_PAGE, Math.max(0, Number(query.count ?? 100) || 100));
 
-    const where: Prisma.UserWhereInput = filter ? this.whereFor(filter) : {};
+    const where: Prisma.UserWhereInput = {
+      ...(filter ? this.whereFor(filter) : {}),
+      isRecoveryAccount: false,
+    };
 
     const [rows, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -122,7 +134,7 @@ export class ScimService {
       case 'externalid':
         return { scimExternalId: filter.value };
       case 'id':
-        return { id: filter.value };
+        return UUID.test(filter.value) ? { id: filter.value } : { id: { in: [] } };
       case 'active': {
         const active = coerceBoolean(filter.value);
         return active === false
@@ -143,8 +155,10 @@ export class ScimService {
   }
 
   private async findOrThrow(id: string): Promise<User> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new ScimException(404, `No user with id ${id}.`);
+    // Not a UUID cannot name an account, and the database would refuse it
+    // with an error rather than an answer.
+    const user = UUID.test(id) ? await this.prisma.user.findUnique({ where: { id } }) : null;
+    if (!user || user.isRecoveryAccount) throw new ScimException(404, `No user with id ${id}.`);
     return user;
   }
 
@@ -184,6 +198,7 @@ export class ScimService {
          */
         role: policy.defaultRole ?? Role.READ_ONLY,
         status: readActive(body) === false ? 'DISABLED' : 'ACTIVE',
+        disabledByDirectory: readActive(body) === false,
         identityProvider: IdentityProvider.OIDC,
         scimExternalId: readString(body, 'externalId') ?? null,
         provisionedAt: new Date(),
@@ -317,6 +332,8 @@ export class ScimService {
     reason: string,
   ): Promise<ScimUser> {
     if (changes.active === false) await this.assertMayDeactivate(user);
+    if (changes.active === true) this.assertMayReactivate(user);
+    if (changes.email && changes.email !== user.email) this.assertMayChangeEmail(user);
 
     if (changes.email && changes.email !== user.email) {
       const clash = await this.prisma.user.findFirst({
@@ -335,8 +352,13 @@ export class ScimService {
       ...(changes.active === undefined
         ? {}
         : changes.active
-          ? { status: 'ACTIVE', failedLoginCount: 0, lockedUntil: null }
-          : { status: 'DISABLED' }),
+          ? { status: 'ACTIVE', failedLoginCount: 0, lockedUntil: null, disabledByDirectory: false }
+          : {
+              status: 'DISABLED',
+              // An account an administrator already disabled stays theirs to
+              // turn back on.
+              disabledByDirectory: user.status === 'DISABLED' ? user.disabledByDirectory : true,
+            }),
       provisionedAt: new Date(),
     };
 
@@ -387,6 +409,35 @@ export class ScimService {
           'mutability',
         );
       }
+    }
+  }
+
+  /** The directory turns back on only what it turned off itself. */
+  private assertMayReactivate(user: User): void {
+    if (user.status === 'DISABLED' && !user.disabledByDirectory) {
+      throw new ScimException(
+        403,
+        'This account was disabled by an administrator in Black Ticket; only an administrator there can enable it.',
+        'mutability',
+      );
+    }
+  }
+
+  /**
+   * A local account's address stays an administrator's to change.
+   *
+   * Federated sign-in adopts an existing account by address, so whoever can
+   * move a local account's address decides which directory identity takes it
+   * over. Once the account is linked to the directory it belongs to it, and
+   * the address follows what the directory says.
+   */
+  private assertMayChangeEmail(user: User): void {
+    if (user.identityProvider !== IdentityProvider.OIDC) {
+      throw new ScimException(
+        403,
+        `${user.email} is a local Black Ticket account; its address can only be changed by an administrator there.`,
+        'mutability',
+      );
     }
   }
 
