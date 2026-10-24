@@ -37,9 +37,12 @@
     "typescript-eslint": "^8.67.0"
   },
   "allowScripts": {
-    "@prisma/engines@7.9.1": true,
-    "prisma@7.9.1": true,
+    "@prisma/engines@7.10.1": true,
+    "prisma@7.10.1": true,
     "esbuild@0.28.2": true,
     "@scarf/scarf": false
+  },
+  "overrides": {
+    "multer": "^2.5.0"
   }
 }
