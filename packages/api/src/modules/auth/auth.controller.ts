@@ -9,6 +9,7 @@ import {
 } from '../../common/decorators/auth.decorators';
 import { LoginThrottleGuard } from '../../common/guards/login-throttle.guard';
 import { ReauthThrottleGuard } from '../../common/guards/reauth-throttle.guard';
+import type { RequestWithUser } from '../../common/types/request.types';
 import { UsersService } from '../users/users.service';
 import { AuthService, type RequestContext } from './auth.service';
 import {
@@ -50,8 +51,8 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Revoke the current session' })
-  async logout(@Body() dto: LogoutDto, @CurrentUser() user: User, @Req() request: Request) {
-    await this.auth.logout(user.id, dto.refreshToken, contextOf(request));
+  async logout(@Body() dto: LogoutDto, @CurrentUser() user: User, @Req() request: RequestWithUser) {
+    await this.auth.logout(user.id, request.sessionId, dto.refreshToken, contextOf(request));
   }
 
   @AllowPendingPasswordChange()

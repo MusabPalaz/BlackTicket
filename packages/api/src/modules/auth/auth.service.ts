@@ -233,7 +233,15 @@ export class AuthService implements OnModuleInit {
     return this.tokens.rotate(refreshToken, { ip: context.ip, userAgent: context.userAgent });
   }
 
-  async logout(userId: string, refreshToken: string | undefined, context: RequestContext): Promise<void> {
+  async logout(
+    userId: string,
+    sessionId: string,
+    refreshToken: string | undefined,
+    context: RequestContext,
+  ): Promise<void> {
+    // The session the caller is signed in with ends whether or not the client
+    // sent its refresh token along; the access token dies with it.
+    await this.tokens.revokeFamily(sessionId);
     if (refreshToken) {
       await this.tokens.revokeByToken(refreshToken);
     }

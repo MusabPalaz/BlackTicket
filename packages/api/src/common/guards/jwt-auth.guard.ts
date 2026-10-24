@@ -10,7 +10,8 @@ import type { RequestWithUser } from '../types/request.types';
  * Verifies the bearer token and loads the account behind it.
  *
  * The user is re-read from the database on every request rather than trusted
- * from the token claims: a disabled account, a demoted role or a forced logout
+ * from the token claims, and the session the token was issued for has to still
+ * be live: a disabled account, a demoted role, a sign-out or a forced logout
  * has to take effect immediately, not whenever the access token happens to
  * expire.
  */
@@ -35,16 +36,24 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Authentication required');
     }
 
-    let userId: string;
+    let claims: { sub: string; sid: string };
     try {
-      userId = this.tokens.verifyAccessToken(token).sub;
+      claims = this.tokens.verifyAccessToken(token);
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
-    const user = await this.users.findById(userId);
+    const [user, sessionLive] = await Promise.all([
+      this.users.findById(claims.sub),
+      this.tokens.isSessionLive(claims.sid),
+    ]);
     if (!user) {
       throw new UnauthorizedException('Account no longer exists');
+    }
+    // Signed out, forced out, or rotated away by a password change: the
+    // signature is still good, but the session it was issued for is over.
+    if (!sessionLive) {
+      throw new UnauthorizedException('Session has ended');
     }
     if (user.status === 'DISABLED') {
       throw new UnauthorizedException('Account is disabled');
@@ -54,6 +63,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     (request as RequestWithUser).user = user;
+    (request as RequestWithUser).sessionId = claims.sid;
     return true;
   }
 
