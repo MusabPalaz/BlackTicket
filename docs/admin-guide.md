@@ -143,8 +143,9 @@ stops signing in, and their account stays. SCIM closes that gap.
 SCIM **closes, it does not delete** — cases record who reported and who took them,
 and deleting the person would orphan that history.
 
-Three things the directory cannot do: take over the recovery account, demote the
-last administrator, reopen an account that was closed here.
+Four things the directory cannot do: take over (or even see) the recovery account,
+demote the last administrator, reopen an account that was closed here, and change
+the address of a local account. It can reopen only accounts it closed itself.
 
 ---
 

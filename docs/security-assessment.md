@@ -51,6 +51,24 @@ decision must not turn into a 500 because the audit write slowed down.
 the audit log
 `ACCESS_DENIED | GET /api/v1/admin/settings/retention | MISSING_PERMISSION | READ_ONLY | ["settings:manage"]`.
 
+### Follow-up review · 2026-10-24
+
+A second code review found the items below. All were fixed, and each fix
+was checked by running it: unit tests, plus the API against PostgreSQL 16
+behind the bundled Caddy configuration, with the interface walked in
+Chromium.
+
+| # | Finding | Fix |
+|---|---|---|
+| F-3 | Twelve advisories in **runtime** dependencies (proxy-addr critical; nodemailer, multer, fast-uri, zod, qs high or moderate), not only the dev-time ones listed below | Patched; nodemailer moved to 10, multer pinned to 2.5 by an override. Two moderate js-yaml advisories remain, below |
+| F-4 | Signing out, a forced logout and a password change revoked refresh tokens only; the access token worked until it expired | The access token carries its refresh family (`sid`); the guard refuses it once the family has no live token |
+| F-5 | Two concurrent refreshes of one token both succeeded, so reuse detection never fired | Rotation claims the old token with a conditional update in one transaction with its successor; losing the claim counts as reuse |
+| F-6 | SCIM could re-enable an account an administrator disabled, move the address of any account (local ones and the break-glass account included) and list the break-glass account. Federated sign-in adopts accounts by address, so moving an address chose who would take an account over | SCIM re-enables only what it disabled (`disabledByDirectory`), changes addresses only on directory-owned accounts, and cannot see the break-glass account |
+| F-7 | The interface document had no CSP: helmet's policy only travels on API responses | Caddy sets a policy on the application page (`script-src 'self'`, no plugins, no framing) |
+| F-8 | The sign-in limit counted per address *and username*, so spraying one password across a user list met only the global limit; the username was not trimmed, so `" admin"` was a separate allowance | Usernames are normalised as sign-in normalises them, and failed sign-ins are budgeted per address across all usernames (`RATE_LIMIT_LOGIN_FAILURES_PER_IP_PER_MIN`, default 20). A correct password awaiting its second factor does not count |
+| F-9 | A TOTP code could be replayed within its ~90-second window; the TOTP-guarded data reset had no per-account limit | The last accepted time step is stored and earlier steps refused; the reset carries the re-authentication limit |
+| F-10 | The public readiness probe returned the database driver's error text; the client's `X-Request-Id` was taken as the log id unchecked; an administrator's 2FA reset left sessions open | Generic error, id accepted only if it looks like one, reset signs the account out |
+
 ---
 
 ## Results by chapter
@@ -66,7 +84,7 @@ the audit log
 | V7 | Error handling and logging | ✅ | Completed with F-2 |
 | V8 | Data protection | ✅ | See below |
 | V9 | Communication security | ✅ | TLS + HSTS in the deployment |
-| V10 | Malicious code | ⚠️ | Known dependency advisory, below |
+| V10 | Malicious code | ⚠️ | Known dependency advisories, below |
 | V11 | Business logic | ✅ | Rate limits, assignment and status rules |
 | V12 | Files and resources | — | No file upload (deliberately out of scope) |
 | V13 | API and web services | ✅ | See below |
@@ -85,7 +103,10 @@ The access token lives **only in memory**; it is never written to any storage, i
 on page reload, and XSS cannot read it. The refresh token is in `sessionStorage` (not
 localStorage) — it dies with the tab. Refresh rotation has **reuse detection**: if the
 same token is presented twice, the whole family is revoked and the event is recorded.
-Signing out revokes the token.
+Signing out revokes the session. The access token carries its refresh
+family, and the guard refuses it as soon as that family is revoked: signing
+out, a forced logout or a password change ends it at once, not when it
+expires.
 
 ### V5 — Validation and encoding
 A global `ValidationPipe` with `whitelist` + `forbidNonWhitelisted`: a field outside
@@ -93,7 +114,8 @@ the contract is not silently dropped, the request is refused — mass assignment
 closed. Prisma produces parameterised queries; the two raw SQL statements
 (`mail.worker`, `relatedCount`) use tagged templates, so they are parameterised too.
 There is **no** `dangerouslySetInnerHTML` anywhere in the interface. CSP
-`script-src 'self'`.
+`script-src 'self'`, set by helmet on API responses and by Caddy on the
+application page itself.
 
 ### V8 — Data protection
 Encrypted secrets: TOTP seeds, the OIDC client secret, the mail password. The key is
@@ -124,14 +146,14 @@ production**. helmet sets CSP, `frameAncestors 'none'`, `X-Content-Type-Options`
 
 ## Accepted risks
 
-**Dependency advisory (V10).** `npm audit` reports three high-severity advisories; all
-three come from the `deepmerge-ts` → `@prisma/config` → `prisma` chain and only affect
-the **development-time** CLI. They are not present in the running server.
-`npm audit fix --force` **downgrades** prisma to 6.12.0, so it is not a solution. It
-will close once Prisma fixes it upstream.
+**Dependency advisories (V10).** `npm audit --omit=dev` reports two moderate
+advisories, both js-yaml under `@nestjs/swagger`. js-yaml only builds the API
+documentation, which is switched off in production. The fixed swagger release
+needs NestJS 12, so it closes with that migration. The earlier `deepmerge-ts` →
+`prisma` advisories were closed by the Prisma 7.10 update.
 
-**In-memory rate limits.** The sign-in and re-authentication counters live in process
-memory. On a single instance they are exact; with several instances they become
+**In-memory rate limits.** The sign-in (per address and username, and failed
+sign-ins per address) and re-authentication counters live in process memory. On a single instance they are exact; with several instances they become
 per-instance, and the database-backed account lockout remains the one hard limit.
 Acceptable for the target of 800 users on a single server.
 
