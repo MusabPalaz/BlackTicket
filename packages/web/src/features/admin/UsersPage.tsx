@@ -790,8 +790,9 @@ export function UsersPage() {
                       title: `Reset two-factor for ${selected.user.username}?`,
                       body: (
                         <p>
-                          The registered authenticator and recovery codes stop working. Until the
-                          person enrols a new device, a password alone signs this account in.
+                          The registered authenticator and recovery codes stop working, and the
+                          account is signed out everywhere. Until the person enrols a new device,
+                          a password alone signs this account in.
                         </p>
                       ),
                       confirmLabel: 'Reset two-factor',

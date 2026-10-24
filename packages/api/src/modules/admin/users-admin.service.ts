@@ -516,6 +516,9 @@ export class UsersAdminService {
       where: { id },
       data: { totpEnabled: false, totpSecret: null, totpRecoveryHash: [], totpLastStep: null },
     });
+    // The device that held the factor is gone, and may be in someone else's
+    // hands; the sessions it helped open go with it.
+    const revoked = await this.tokens.revokeAllForUser(id);
 
     await this.audit.record({
       action: AuditAction.TOTP_DISABLED,
@@ -524,7 +527,7 @@ export class UsersAdminService {
       actorId: actor.id,
       actorIp: actor.ip,
       actorUserAgent: actor.userAgent,
-      metadata: { byAdministrator: true },
+      metadata: { byAdministrator: true, revokedSessions: revoked },
     });
   }
 

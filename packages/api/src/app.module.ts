@@ -25,6 +25,8 @@ import { AlertsModule } from './modules/alerts/alerts.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 
+const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -38,7 +40,12 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
       useFactory: (config: ConfigService<AppEnv, true>) => ({
         pinoHttp: {
           level: config.get('NODE_ENV') === 'production' ? 'info' : 'debug',
-          genReqId: (req) => (req.headers['x-request-id'] as string) ?? randomUUID(),
+          // A caller's own id is kept only if it looks like one: the header
+          // is the client's to choose, and it lands in every log line.
+          genReqId: (req) => {
+            const given = req.headers['x-request-id'];
+            return typeof given === 'string' && REQUEST_ID.test(given) ? given : randomUUID();
+          },
           transport:
             config.get('NODE_ENV') === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true, translateTime: 'HH:MM:ss' } }
