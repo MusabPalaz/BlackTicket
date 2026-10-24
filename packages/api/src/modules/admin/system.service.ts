@@ -225,7 +225,7 @@ export class SystemService {
         'Turn on two-factor authentication for your own account before running this.',
       );
     }
-    if (!this.totp.verifyCode(user.totpSecret, code)) {
+    if (!(await this.totp.consumeCode(user, code))) {
       throw new BadRequestException('That code did not match. Check your authenticator clock.');
     }
 

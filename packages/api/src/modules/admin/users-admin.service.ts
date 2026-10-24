@@ -514,7 +514,7 @@ export class UsersAdminService {
 
     await this.prisma.user.update({
       where: { id },
-      data: { totpEnabled: false, totpSecret: null, totpRecoveryHash: [] },
+      data: { totpEnabled: false, totpSecret: null, totpRecoveryHash: [], totpLastStep: null },
     });
 
     await this.audit.record({

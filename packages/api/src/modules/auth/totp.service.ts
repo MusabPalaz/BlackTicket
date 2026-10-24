@@ -7,6 +7,7 @@ import { BRANDING } from '@black-ticket/shared';
 import { ARGON2_OPTIONS } from '../../common/security/password.constants';
 import { decryptSecret, encryptSecret } from '../../common/security/secret-box';
 import type { AppEnv } from '../../common/config/env.config';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * One 30-second step of tolerance on each side: enough for the clock drift of a
@@ -25,7 +26,10 @@ export interface TotpSetup {
 
 @Injectable()
 export class TotpService {
-  constructor(private readonly config: ConfigService<AppEnv, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppEnv, true>,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private get masterKey(): string {
     return this.config.get('TOTP_ENCRYPTION_KEY', { infer: true });
@@ -46,18 +50,44 @@ export class TotpService {
     };
   }
 
-  verifyCode(encryptedSecret: string, code: string): boolean {
+  /**
+   * Checks a code and spends its time step, so the same code is refused the
+   * second time it is presented. The claim is a conditional update, so two
+   * requests racing with one code cannot both get through.
+   */
+  async consumeCode(
+    user: { id: string; totpSecret: string | null; totpLastStep: number | null },
+    code: string,
+  ): Promise<boolean> {
+    if (!user.totpSecret) return false;
+    const step = this.verifyCode(user.totpSecret, code, user.totpLastStep);
+    if (step === null) return false;
+
+    const claimed = await this.prisma.user.updateMany({
+      where: { id: user.id, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
+      data: { totpLastStep: step },
+    });
+    return claimed.count === 1;
+  }
+
+  /** The time step the code belongs to, or null when it does not match. */
+  private verifyCode(
+    encryptedSecret: string,
+    code: string,
+    afterTimeStep: number | null,
+  ): number | null {
     try {
       const result = verifySync({
         strategy: 'totp',
         secret: decryptSecret(encryptedSecret, this.masterKey),
         token: code.replace(/\s+/g, ''),
         epochTolerance: EPOCH_TOLERANCE_SECONDS,
+        ...(afterTimeStep === null ? {} : { afterTimeStep }),
       });
-      return result.valid;
+      return result.valid && 'timeStep' in result ? result.timeStep : null;
     } catch {
       // A tampered or undecryptable seed reads as "wrong code", never as a 500.
-      return false;
+      return null;
     }
   }
 

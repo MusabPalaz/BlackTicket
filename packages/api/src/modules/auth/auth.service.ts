@@ -179,7 +179,7 @@ export class AuthService implements OnModuleInit {
 
   /** Accepts either a live TOTP code or one single-use recovery code. */
   private async verifySecondFactor(user: User, code: string): Promise<boolean> {
-    if (user.totpSecret && this.totp.verifyCode(user.totpSecret, code)) {
+    if (await this.totp.consumeCode(user, code)) {
       return true;
     }
 
@@ -326,7 +326,8 @@ export class AuthService implements OnModuleInit {
     const setup = this.totp.createSetup(user.username);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { totpSecret: setup.encryptedSecret, totpEnabled: false },
+      // A new seed starts a new count of time steps.
+      data: { totpSecret: setup.encryptedSecret, totpEnabled: false, totpLastStep: null },
     });
 
     return { secret: setup.secret, uri: setup.uri };
@@ -337,7 +338,7 @@ export class AuthService implements OnModuleInit {
     if (!user.totpSecret) {
       throw new BadRequestException('Start the two-factor setup first.');
     }
-    if (!this.totp.verifyCode(user.totpSecret, code)) {
+    if (!(await this.totp.consumeCode(user, code))) {
       throw new BadRequestException('That code did not match. Check your authenticator clock.');
     }
 
@@ -370,7 +371,7 @@ export class AuthService implements OnModuleInit {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { totpEnabled: false, totpSecret: null, totpRecoveryHash: [] },
+      data: { totpEnabled: false, totpSecret: null, totpRecoveryHash: [], totpLastStep: null },
     });
 
     await this.audit.record({

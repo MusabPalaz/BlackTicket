@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { User } from '@prisma/client';
 import { Permission } from '@black-ticket/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators/auth.decorators';
+import { ReauthThrottleGuard } from '../../common/guards/reauth-throttle.guard';
 import { SystemService } from './system.service';
 import { PurgeDto, PurgeableQueryDto, ResetDataDto } from './dto/admin.dto';
 import type { AdminActor } from './users-admin.service';
@@ -46,7 +47,10 @@ export class SystemController {
     return this.system.resetPreview();
   }
 
+  // The code is the only thing standing between a stolen session and this
+  // button, so guesses at it are limited per account like a password re-check.
   @Post('reset')
+  @UseGuards(ReauthThrottleGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:

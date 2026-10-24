@@ -138,6 +138,9 @@ model User {
   totpSecret       String?
   totpEnabled      Boolean  @default(false)
   totpRecoveryHash String[] @default([])
+  /// The time step of the last code accepted; a code is refused at or before
+  /// it, so one code cannot be spent twice inside its tolerance window.
+  totpLastStep     Int?
 
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
